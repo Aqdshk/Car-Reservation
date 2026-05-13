@@ -5,6 +5,7 @@ namespace CarBooking.Api.Models;
 public class Reservation
 {
     public int Id { get; set; }
+    [MaxLength(16)] public string TrackingCode { get; set; } = "";
 
     [Required, MaxLength(100)] public string BookerName { get; set; } = "";
     [MaxLength(150)] public string? BookerEmail { get; set; }
@@ -24,4 +25,12 @@ public class Reservation
     [MaxLength(1000)] public string? Notes { get; set; }
     [MaxLength(20)] public string Status { get; set; } = "Pending";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Check-in / Check-out
+    public int? StartMileage { get; set; }
+    public int? EndMileage { get; set; }
+    [MaxLength(255)] public string? StartMileagePhoto { get; set; }
+    [MaxLength(255)] public string? EndMileagePhoto { get; set; }
+    public DateTime? CheckedInAt { get; set; }
+    public DateTime? CheckedOutAt { get; set; }
 }

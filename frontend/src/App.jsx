@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
 import AdminLayout from './components/AdminLayout';
 import PublicHome from './pages/PublicHome';
+import Track from './pages/Track';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import Vehicles from './pages/Vehicles';
@@ -21,6 +22,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<PublicHome />} />
+          <Route path="/track/:code" element={<Track />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminProtected><AdminDashboard /></AdminProtected>} />
           <Route path="/admin/calendar" element={<AdminProtected><CalendarPage /></AdminProtected>} />

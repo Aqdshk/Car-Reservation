@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable';
 const fmtDate = (s) => new Date(s).toLocaleDateString('en-GB');
 const fmtDT = (s) => new Date(s).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 const hoursBetween = (s, e) => Math.max(0, (new Date(e) - new Date(s)) / 36e5);
+const actualKm = (b) => (b.endMileage != null && b.startMileage != null) ? (b.endMileage - b.startMileage) : 0;
 
 export default function Reports() {
   const [bookings, setBookings] = useState([]);
@@ -33,15 +34,17 @@ export default function Reports() {
       const list = filtered.filter(b => b.vehicleId === v.id);
       const approved = list.filter(b => b.status === 'Approved');
       const totalHours = approved.reduce((sum, b) => sum + hoursBetween(b.startTime, b.endTime), 0);
-      const totalKm = approved.reduce((sum, b) => sum + (b.distanceKm || 0), 0);
+      const actualMileage = approved.reduce((sum, b) => sum + actualKm(b), 0);
+      const completed = approved.filter(b => b.checkedOutAt).length;
       return {
         vehicle: v,
         total: list.length,
         approved: approved.length,
         pending: list.filter(b => b.status === 'Pending').length,
         rejected: list.filter(b => b.status === 'Rejected').length,
+        completed,
         hours: Math.round(totalHours * 10) / 10,
-        km: totalKm,
+        km: actualMileage,
       };
     });
   }, [filtered, vehicles]);
@@ -51,13 +54,14 @@ export default function Reports() {
     approved: filtered.filter(b => b.status === 'Approved').length,
     pending: filtered.filter(b => b.status === 'Pending').length,
     rejected: filtered.filter(b => b.status === 'Rejected').length,
+    completed: filtered.filter(b => b.checkedOutAt).length,
+    totalKm: filtered.reduce((sum, b) => sum + actualKm(b), 0),
   }), [filtered]);
 
   const downloadPdf = () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
 
-    // Title
     doc.setFontSize(18); doc.setFont('helvetica', 'bold');
     doc.text('C-Zero Cars — Usage Report', 14, 18);
     doc.setFontSize(10); doc.setFont('helvetica', 'normal');
@@ -65,59 +69,57 @@ export default function Reports() {
     doc.text(`Period: ${fmtDate(from)} to ${fmtDate(to)}`, 14, 26);
     doc.text(`Generated: ${new Date().toLocaleString('en-GB')}`, 14, 31);
 
-    // Summary
     doc.setFontSize(12); doc.setTextColor(0); doc.setFont('helvetica', 'bold');
     doc.text('Summary', 14, 42);
     autoTable(doc, {
       startY: 46,
-      head: [['Total Bookings', 'Approved', 'Pending', 'Rejected']],
-      body: [[totals.total, totals.approved, totals.pending, totals.rejected]],
+      head: [['Total', 'Approved', 'Completed', 'Pending', 'Rejected', 'Total Distance (km)']],
+      body: [[totals.total, totals.approved, totals.completed, totals.pending, totals.rejected, totals.totalKm.toLocaleString()]],
       theme: 'grid',
       headStyles: { fillColor: [40, 40, 50], textColor: 255 },
       styles: { fontSize: 10 },
     });
 
-    // Per vehicle
     doc.setFont('helvetica', 'bold');
     doc.text('Per-Vehicle Usage', 14, doc.lastAutoTable.finalY + 12);
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 16,
-      head: [['Plate', 'Vehicle', 'Total', 'Approved', 'Pending', 'Rejected', 'Hours Used', 'KM']],
+      head: [['Plate', 'Vehicle', 'Total', 'Approved', 'Completed', 'Hours', 'Distance (km)']],
       body: perVehicle.map(p => [
         p.vehicle.plateNumber,
         `${p.vehicle.make} ${p.vehicle.model}`,
-        p.total, p.approved, p.pending, p.rejected,
-        p.hours, p.km
+        p.total, p.approved, p.completed,
+        p.hours, p.km.toLocaleString()
       ]),
       theme: 'grid',
       headStyles: { fillColor: [40, 40, 50], textColor: 255 },
       styles: { fontSize: 9 },
     });
 
-    // All bookings detail
     if (filtered.length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.text('Booking Details', 14, doc.lastAutoTable.finalY + 12);
       autoTable(doc, {
         startY: doc.lastAutoTable.finalY + 16,
-        head: [['ID', 'Booker', 'Dept', 'Vehicle', 'Period', 'Destination', 'Status']],
+        head: [['ID', 'Code', 'Booker', 'Vehicle', 'Period', 'Start km', 'End km', 'Distance', 'Status']],
         body: filtered.map(b => [
           `#R${String(b.id).padStart(3,'0')}`,
-          b.bookerName,
-          b.department || '-',
+          b.trackingCode,
+          `${b.bookerName}${b.department ? `\n${b.department}` : ''}`,
           `${b.vehicleName}\n${b.vehiclePlate}`,
-          `${fmtDT(b.startTime)}\nto ${fmtDT(b.endTime)}`,
-          b.destination,
+          `${fmtDT(b.startTime)}\n→ ${fmtDT(b.endTime)}`,
+          b.startMileage != null ? b.startMileage.toLocaleString() : '-',
+          b.endMileage != null ? b.endMileage.toLocaleString() : '-',
+          actualKm(b) > 0 ? `${actualKm(b).toLocaleString()} km` : '-',
           b.status,
         ]),
         theme: 'striped',
         headStyles: { fillColor: [40, 40, 50], textColor: 255 },
         styles: { fontSize: 8, cellPadding: 2 },
-        columnStyles: { 4: { cellWidth: 45 } },
+        columnStyles: { 4: { cellWidth: 38 } },
       });
     }
 
-    // Footer
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
@@ -156,9 +158,9 @@ export default function Reports() {
 
       <div className="stats">
         <div className="stat-card"><div className="label">Total Bookings</div><div className="value">{String(totals.total).padStart(2,'0')}</div><div className="delta">in period</div></div>
-        <div className="stat-card"><div className="label">Approved</div><div className="value">{String(totals.approved).padStart(2,'0')}</div><div className="delta">completed</div></div>
+        <div className="stat-card"><div className="label">Approved</div><div className="value">{String(totals.approved).padStart(2,'0')}</div><div className="delta">{totals.completed} completed</div></div>
         <div className="stat-card"><div className="label">Pending</div><div className="value">{String(totals.pending).padStart(2,'0')}</div><div className="delta">awaiting</div></div>
-        <div className="stat-card"><div className="label">Rejected</div><div className="value">{String(totals.rejected).padStart(2,'0')}</div><div className="delta red">declined</div></div>
+        <div className="stat-card"><div className="label">Total Distance</div><div className="value">{totals.totalKm.toLocaleString()}</div><div className="delta">km traveled</div></div>
       </div>
 
       <div className="card">
@@ -167,8 +169,8 @@ export default function Reports() {
           <thead>
             <tr>
               <th>Plate</th><th>Vehicle</th>
-              <th>Total</th><th>Approved</th><th>Pending</th><th>Rejected</th>
-              <th>Hours Used</th><th>Distance (km)</th>
+              <th>Total</th><th>Approved</th><th>Completed</th>
+              <th>Hours</th><th>Distance (km)</th>
             </tr>
           </thead>
           <tbody>
@@ -178,10 +180,9 @@ export default function Reports() {
                 <td>{p.vehicle.make} {p.vehicle.model}</td>
                 <td>{p.total}</td>
                 <td style={{color:'var(--accent)'}}>{p.approved}</td>
-                <td style={{color:'var(--orange)'}}>{p.pending}</td>
-                <td style={{color:'var(--red)'}}>{p.rejected}</td>
+                <td style={{color:'var(--accent)'}}>{p.completed}</td>
                 <td className="mono">{p.hours} h</td>
-                <td className="mono">{p.km} km</td>
+                <td className="mono" style={{color:'var(--accent)',fontWeight:700}}>{p.km.toLocaleString()} km</td>
               </tr>
             ))}
           </tbody>

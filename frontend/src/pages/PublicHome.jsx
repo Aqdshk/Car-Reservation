@@ -15,6 +15,8 @@ export default function PublicHome() {
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState([]);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedData, setSubmittedData] = useState(null);
+  const [trackCode, setTrackCode] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -46,7 +48,8 @@ export default function PublicHome() {
     e.preventDefault();
     setErr(''); setLoading(true);
     try {
-      await api.post('/reservations', { ...form, vehicleId: selected.id });
+      const { data } = await api.post('/reservations', { ...form, vehicleId: selected.id });
+      setSubmittedData(data);
       setSubmitted(true);
     } catch (e) {
       setErr(e.response?.data?.message || 'Failed to submit booking');
@@ -63,7 +66,14 @@ export default function PublicHome() {
             <div className="public-sub mono">company vehicle reservation</div>
           </div>
         </div>
-        <Link to="/admin/login" className="admin-link mono">admin ›</Link>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <form onSubmit={(e) => { e.preventDefault(); if (trackCode.trim()) location.href = `/track/${trackCode.trim().toUpperCase()}`; }} style={{display:'flex',gap:6}}>
+            <input value={trackCode} onChange={(e) => setTrackCode(e.target.value.toUpperCase())} placeholder="TRACKING CODE" maxLength="8"
+              style={{padding:'6px 10px',border:'1px solid var(--border)',borderRadius:6,background:'var(--bg-2)',color:'var(--text)',fontFamily:'JetBrains Mono',fontSize:12,letterSpacing:1,width:130}}/>
+            <button type="submit" className="admin-link mono" style={{cursor:'pointer'}}>track ›</button>
+          </form>
+          <Link to="/admin/login" className="admin-link mono">admin ›</Link>
+        </div>
       </header>
 
       <main className="public-main">
@@ -98,14 +108,21 @@ export default function PublicHome() {
           </>
         )}
 
-        {selected && submitted && (
+        {selected && submitted && submittedData && (
           <div className="card success-card">
             <div className="success-icon">✓</div>
             <h2>Booking submitted!</h2>
-            <p className="page-sub">Your request for <strong>{selected.make} {selected.model}</strong> ({selected.plateNumber}) has been sent to admin for approval.</p>
-            <p className="page-sub" style={{marginTop:8}}>You will be contacted once it's reviewed.</p>
-            <div style={{marginTop:20}}>
-              <button className="btn" onClick={closeBooking}>← Back to vehicles</button>
+            <p className="page-sub">Request sent to admin for approval.</p>
+
+            <div style={{margin:'24px auto',maxWidth:400,padding:20,background:'var(--bg-2)',border:'1px solid var(--accent)',borderRadius:12}}>
+              <div className="info-label" style={{textAlign:'center'}}>YOUR TRACKING CODE</div>
+              <div className="mono" style={{fontSize:32,fontWeight:700,color:'var(--accent)',letterSpacing:3,marginTop:8}}>{submittedData.trackingCode}</div>
+              <p style={{fontSize:12,color:'var(--muted)',marginTop:12}}>📸 Save this code — you'll need it to check-in/check-out vehicle later</p>
+            </div>
+
+            <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
+              <Link to={`/track/${submittedData.trackingCode}`}><button className="btn">View tracking page →</button></Link>
+              <button className="btn btn-ghost" onClick={() => { setSubmittedData(null); closeBooking(); }}>← Back to vehicles</button>
             </div>
           </div>
         )}
