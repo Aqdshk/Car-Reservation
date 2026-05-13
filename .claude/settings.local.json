@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "PowerShell(winget --version)",
-      "PowerShell($env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; cd \"C:\\\\CAR Booking System\"; git init; git branch -M main; git add .; git -c user.email=\"aqidishak28@gmail.com\" -c user.name=\"Aqdshk\" commit -m \"Initial commit: Car Reservation System \\(ASP.NET Core + React + MySQL\\)\" 2>&1 | Select-Object -Last 5)"
+      "PowerShell($env:PATH += \";C:\\\\Program Files\\\\Git\\\\cmd\"; cd \"C:\\\\CAR Booking System\"; git init; git branch -M main; git add .; git -c user.email=\"aqidishak28@gmail.com\" -c user.name=\"Aqdshk\" commit -m \"Initial commit: Car Reservation System \\(ASP.NET Core + React + MySQL\\)\" 2>&1 | Select-Object -Last 5)",
+      "PowerShell(Get-ChildItem \"C:\\\\CAR Booking System\\\\frontend\\\\dist\\\\assets\" | Select-Object Name,@{N='KB';E={[math]::Round\\($_.Length/1KB\\)}})"
     ]
   }
 }

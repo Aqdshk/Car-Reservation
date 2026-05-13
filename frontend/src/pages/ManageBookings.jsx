@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 
-const fmt = (s) => new Date(s).toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+const fmt = (s) => new Date(s).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 const badge = (s) => `badge badge-${s.toLowerCase()}`;
 
 export default function ManageBookings() {
@@ -13,6 +13,12 @@ export default function ManageBookings() {
 
   const act = async (id, status) => {
     await api.patch(`/reservations/${id}/status`, { status });
+    load();
+  };
+
+  const del = async (id) => {
+    if (!confirm('Delete this booking permanently?')) return;
+    await api.delete(`/reservations/${id}`);
     load();
   };
 
@@ -35,15 +41,24 @@ export default function ManageBookings() {
           </select>
         </div>
         <table>
-          <thead><tr><th>ID</th><th>Staff</th><th>Vehicle</th><th>Period</th><th>Purpose</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Booker</th><th>Contact</th><th>Vehicle</th><th>Period</th><th>Purpose</th><th>Extras</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {filtered.map(r => (
               <tr key={r.id}>
                 <td><span className="mono">#R{String(r.id).padStart(3,'0')}</span></td>
-                <td>{r.userName}</td>
+                <td>{r.bookerName}{r.department && <div className="mono" style={{fontSize:11}}>{r.department}</div>}</td>
+                <td>
+                  {r.bookerPhone && <div className="mono" style={{fontSize:12}}>{r.bookerPhone}</div>}
+                  {r.bookerEmail && <div className="mono" style={{fontSize:11,color:'var(--muted)'}}>{r.bookerEmail}</div>}
+                </td>
                 <td>{r.vehicleName}</td>
                 <td><span className="mono">{fmt(r.startTime)}</span></td>
                 <td>{r.destination}</td>
+                <td className="mono" style={{fontSize:11}}>
+                  {r.needTngCard && <div style={{color:'var(--accent)'}}>TnG ✓</div>}
+                  {r.needFuelCard && <div style={{color:'var(--accent)'}}>Fuel ✓</div>}
+                  {!r.needTngCard && !r.needFuelCard && <span style={{color:'var(--muted)'}}>—</span>}
+                </td>
                 <td><span className={badge(r.status)}>{r.status}</span></td>
                 <td>
                   {r.status === 'Pending' ? (
@@ -51,7 +66,9 @@ export default function ManageBookings() {
                       <button className="btn btn-sm" onClick={() => act(r.id, 'Approved')}>✓</button>{' '}
                       <button className="btn btn-sm btn-ghost" onClick={() => act(r.id, 'Rejected')}>✕</button>
                     </>
-                  ) : '—'}
+                  ) : (
+                    <button className="btn btn-sm btn-ghost" onClick={() => del(r.id)}>🗑</button>
+                  )}
                 </td>
               </tr>
             ))}

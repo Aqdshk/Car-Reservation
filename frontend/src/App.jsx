@@ -1,19 +1,18 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
-import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import NewBooking from './pages/NewBooking';
-import MyBookings from './pages/MyBookings';
+import AdminLayout from './components/AdminLayout';
+import PublicHome from './pages/PublicHome';
+import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import Vehicles from './pages/Vehicles';
 import ManageBookings from './pages/ManageBookings';
+import CalendarPage from './pages/Calendar';
+import Reports from './pages/Reports';
 
-function Protected({ children, admin }) {
+function AdminProtected({ children }) {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  if (admin && user.role !== 'Admin') return <Navigate to="/" replace />;
-  return <Layout>{children}</Layout>;
+  if (!user) return <Navigate to="/admin/login" replace />;
+  return <AdminLayout>{children}</AdminLayout>;
 }
 
 export default function App() {
@@ -21,13 +20,13 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<Protected><Dashboard /></Protected>} />
-          <Route path="/new" element={<Protected><NewBooking /></Protected>} />
-          <Route path="/mine" element={<Protected><MyBookings /></Protected>} />
-          <Route path="/admin" element={<Protected admin><AdminDashboard /></Protected>} />
-          <Route path="/admin/bookings" element={<Protected admin><ManageBookings /></Protected>} />
-          <Route path="/admin/vehicles" element={<Protected admin><Vehicles /></Protected>} />
+          <Route path="/" element={<PublicHome />} />
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin" element={<AdminProtected><AdminDashboard /></AdminProtected>} />
+          <Route path="/admin/calendar" element={<AdminProtected><CalendarPage /></AdminProtected>} />
+          <Route path="/admin/reports" element={<AdminProtected><Reports /></AdminProtected>} />
+          <Route path="/admin/bookings" element={<AdminProtected><ManageBookings /></AdminProtected>} />
+          <Route path="/admin/vehicles" element={<AdminProtected><Vehicles /></AdminProtected>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

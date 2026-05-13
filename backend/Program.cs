@@ -61,9 +61,8 @@ using (var scope = app.Services.CreateScope())
         db.Database.EnsureCreated();
         if (!db.Users.Any())
         {
-            db.Users.AddRange(
-                new CarBooking.Api.Models.User { Name = "Admin", Email = "admin@c-zero.my", Role = "Admin", PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123") },
-                new CarBooking.Api.Models.User { Name = "Aqid Ishak", Email = "aqid@c-zero.my", Role = "Staff", PasswordHash = BCrypt.Net.BCrypt.HashPassword("staff123") }
+            db.Users.Add(
+                new CarBooking.Api.Models.User { Name = "Admin", Email = "admin@c-zero.my", Role = "Admin", PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123") }
             );
         }
         if (!db.Vehicles.Any())

@@ -33,7 +33,7 @@ export default function AdminDashboard() {
         <div className="stat-card"><div className="label">Fleet Size</div><div className="value">{String(vehicles.length).padStart(2,'0')}</div><div className="delta">total vehicles</div></div>
         <div className="stat-card"><div className="label">Available</div><div className="value">{String(available).padStart(2,'0')}</div><div className="delta">ready to book</div></div>
         <div className="stat-card"><div className="label">Pending</div><div className="value">{String(pending.length).padStart(2,'0')}</div><div className="delta">needs review</div></div>
-        <div className="stat-card"><div className="label">Active</div><div className="value">—</div><div className="delta">in use</div></div>
+        <div className="stat-card"><div className="label">In Use</div><div className="value">—</div><div className="delta">active rides</div></div>
       </div>
 
       <div className="card">
@@ -45,11 +45,11 @@ export default function AdminDashboard() {
           <p style={{color:'var(--muted)',fontSize:14,padding:'20px 0'}}>No pending requests. All caught up ✓</p>
         ) : (
           <table>
-            <thead><tr><th>Staff</th><th>Vehicle</th><th>Date</th><th>Purpose</th><th></th></tr></thead>
+            <thead><tr><th>Booker</th><th>Vehicle</th><th>Date</th><th>Purpose</th><th></th></tr></thead>
             <tbody>
               {pending.map(r => (
                 <tr key={r.id}>
-                  <td>{r.userName}</td>
+                  <td>{r.bookerName}{r.department && <span className="mono"> · {r.department}</span>}</td>
                   <td>{r.vehicleName}</td>
                   <td><span className="mono">{fmt(r.startTime)}</span></td>
                   <td>{r.destination}</td>

@@ -9,12 +9,12 @@ namespace CarBooking.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
 public class VehiclesController : ControllerBase
 {
     private readonly AppDbContext _db;
     public VehiclesController(AppDbContext db) => _db = db;
 
+    // PUBLIC — anyone can view available vehicles
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {

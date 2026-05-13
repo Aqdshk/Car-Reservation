@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 
-export default function Login() {
-  const [email, setEmail] = useState('aqid@c-zero.my');
-  const [password, setPassword] = useState('staff123');
+export default function AdminLogin() {
+  const [email, setEmail] = useState('admin@c-zero.my');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -14,8 +14,8 @@ export default function Login() {
     e.preventDefault();
     setErr(''); setLoading(true);
     try {
-      const u = await login(email, password);
-      nav(u.role === 'Admin' ? '/admin' : '/');
+      await login(email, password);
+      nav('/admin');
     } catch (e) {
       setErr(e.response?.data?.message || 'Login failed');
     } finally { setLoading(false); }
@@ -27,24 +27,20 @@ export default function Login() {
       <div className="glow glow-2"></div>
       <form className="login-card" onSubmit={submit}>
         <div className="login-logo">→</div>
-        <h1>Sign in</h1>
-        <p className="sub">access <span className="mono">reservation.c-zero.my</span></p>
+        <h1>Admin Sign In</h1>
+        <p className="sub">restricted area · <Link to="/" style={{color:'var(--accent)'}}>back to booking</Link></p>
 
         {err && <div className="error">{err}</div>}
 
         <div className="form-group">
           <label>EMAIL</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required/>
         </div>
         <div className="form-group">
           <label>PASSWORD</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus/>
         </div>
         <button className="btn btn-full" disabled={loading}>{loading ? 'Signing in…' : 'Continue →'}</button>
-
-        <p style={{textAlign:'center',marginTop:20,fontSize:12,color:'var(--muted)',fontFamily:'JetBrains Mono'}}>
-          v1.0.0 · contact admin for password reset
-        </p>
       </form>
     </div>
   );
