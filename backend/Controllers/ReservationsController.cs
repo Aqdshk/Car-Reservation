@@ -57,6 +57,25 @@ public class ReservationsController : ControllerBase
         if (conflict)
             return BadRequest(new { message = "Vehicle already booked during this time slot" });
 
+        // Card availability check (overlapping approved bookings using cards)
+        var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
+        if (dto.NeedTngCard)
+        {
+            var tngInUse = await _db.Reservations.CountAsync(r =>
+                r.Status == "Approved" && r.NeedTngCard && r.CheckedOutAt == null &&
+                r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
+            if (tngInUse >= settings.TotalTngCards)
+                return BadRequest(new { message = "No TnG card available for this period" });
+        }
+        if (dto.NeedFuelCard)
+        {
+            var fuelInUse = await _db.Reservations.CountAsync(r =>
+                r.Status == "Approved" && r.NeedFuelCard && r.CheckedOutAt == null &&
+                r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
+            if (fuelInUse >= settings.TotalFuelCards)
+                return BadRequest(new { message = "No Fuel card available for this period" });
+        }
+
         // Generate unique tracking code
         string code;
         do { code = GenerateCode(); }
@@ -225,6 +244,24 @@ public class ReservationsController : ControllerBase
                 x.StartTime < r.EndTime && x.EndTime > r.StartTime);
             if (conflict)
                 return BadRequest(new { message = "Cannot approve — time slot conflicts with another approved booking" });
+
+            var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
+            if (r.NeedTngCard)
+            {
+                var tngInUse = await _db.Reservations.CountAsync(x =>
+                    x.Id != id && x.Status == "Approved" && x.NeedTngCard && x.CheckedOutAt == null &&
+                    x.StartTime < r.EndTime && x.EndTime > r.StartTime);
+                if (tngInUse >= settings.TotalTngCards)
+                    return BadRequest(new { message = "Cannot approve — no TnG card available for this period" });
+            }
+            if (r.NeedFuelCard)
+            {
+                var fuelInUse = await _db.Reservations.CountAsync(x =>
+                    x.Id != id && x.Status == "Approved" && x.NeedFuelCard && x.CheckedOutAt == null &&
+                    x.StartTime < r.EndTime && x.EndTime > r.StartTime);
+                if (fuelInUse >= settings.TotalFuelCards)
+                    return BadRequest(new { message = "Cannot approve — no Fuel card available for this period" });
+            }
         }
 
         r.Status = dto.Status;

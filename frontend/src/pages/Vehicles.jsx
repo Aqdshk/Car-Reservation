@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 
-const emojiFor = (type) => ({ Sedan:'🚗', Pickup:'🛻', SUV:'🚙', Van:'🚐' }[type] || '🚗');
+const emojiFor = (type) => ({ Sedan:'🚗', SUV:'🚙', Pickup:'🛻', Van:'🚐', Motorcycle:'🏍️', Lorry:'🚛', Truck:'🚚', Bus:'🚌' }[type] || '🚗');
 
 export default function Vehicles() {
   const [vehicles, setVehicles] = useState([]);
@@ -55,7 +55,14 @@ export default function Vehicles() {
             <div className="form-group"><label>MODEL</label><input value={form.model} onChange={set('model')} required/></div>
             <div className="form-group"><label>TYPE</label>
               <select value={form.type} onChange={set('type')}>
-                <option>Sedan</option><option>Pickup</option><option>SUV</option><option>Van</option>
+                <option>Sedan</option>
+                <option>SUV</option>
+                <option>Pickup</option>
+                <option>Van</option>
+                <option>Motorcycle</option>
+                <option>Lorry</option>
+                <option>Truck</option>
+                <option>Bus</option>
               </select>
             </div>
             <div className="form-group"><label>FUEL</label>

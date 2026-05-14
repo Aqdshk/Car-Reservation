@@ -25,3 +25,6 @@ public record CreateReservationDto(
 
 public record UpdateStatusDto(string Status);
 public record BusySlotDto(int Id, int VehicleId, DateTime StartTime, DateTime EndTime, string Status, string BookerName);
+
+public record CardStatusDto(int TotalTng, int InUseTng, int AvailableTng, int TotalFuel, int InUseFuel, int AvailableFuel);
+public record UpdateCardSettingsDto(int TotalTngCards, int TotalFuelCards);

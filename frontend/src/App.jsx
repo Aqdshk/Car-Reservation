@@ -9,6 +9,7 @@ import Vehicles from './pages/Vehicles';
 import ManageBookings from './pages/ManageBookings';
 import CalendarPage from './pages/Calendar';
 import Reports from './pages/Reports';
+import SettingsPage from './pages/Settings';
 
 function AdminProtected({ children }) {
   const { user } = useAuth();
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/admin" element={<AdminProtected><AdminDashboard /></AdminProtected>} />
           <Route path="/admin/calendar" element={<AdminProtected><CalendarPage /></AdminProtected>} />
           <Route path="/admin/reports" element={<AdminProtected><Reports /></AdminProtected>} />
+          <Route path="/admin/settings" element={<AdminProtected><SettingsPage /></AdminProtected>} />
           <Route path="/admin/bookings" element={<AdminProtected><ManageBookings /></AdminProtected>} />
           <Route path="/admin/vehicles" element={<AdminProtected><Vehicles /></AdminProtected>} />
           <Route path="*" element={<Navigate to="/" replace />} />

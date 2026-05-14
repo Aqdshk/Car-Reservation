@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
+import ThemeToggle from '../components/ThemeToggle';
 
 const fmtDT = (s) => new Date(s).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
@@ -71,7 +72,10 @@ export default function Track() {
             <div className="public-sub mono">booking tracker</div>
           </div>
         </div>
-        <Link to="/" className="admin-link mono">home ›</Link>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <ThemeToggle/>
+          <Link to="/" className="admin-link mono">home ›</Link>
+        </div>
       </header>
 
       <main className="public-main" style={{maxWidth:780}}>

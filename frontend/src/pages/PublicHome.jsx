@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import MiniCalendar from '../components/MiniCalendar';
+import ThemeToggle from '../components/ThemeToggle';
 
-const emojiFor = (type) => ({ Sedan:'🚗', Pickup:'🛻', SUV:'🚙', Van:'🚐' }[type] || '🚗');
+const emojiFor = (type) => ({ Sedan:'🚗', SUV:'🚙', Pickup:'🛻', Van:'🚐', Motorcycle:'🏍️', Lorry:'🚛', Truck:'🚚', Bus:'🚌' }[type] || '🚗');
 const fmtRange = (s, e) => {
   const sd = new Date(s), ed = new Date(e);
   const opt = { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' };
@@ -17,6 +18,7 @@ export default function PublicHome() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedData, setSubmittedData] = useState(null);
   const [trackCode, setTrackCode] = useState('');
+  const [cardStatus, setCardStatus] = useState(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -28,6 +30,7 @@ export default function PublicHome() {
 
   useEffect(() => {
     api.get('/vehicles').then(r => setVehicles(r.data));
+    api.get('/settings/cards').then(r => setCardStatus(r.data)).catch(() => {});
   }, []);
 
   const openBooking = async (v) => {
@@ -67,6 +70,7 @@ export default function PublicHome() {
           </div>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <ThemeToggle/>
           <form onSubmit={(e) => { e.preventDefault(); if (trackCode.trim()) location.href = `/track/${trackCode.trim().toUpperCase()}`; }} style={{display:'flex',gap:6}}>
             <input value={trackCode} onChange={(e) => setTrackCode(e.target.value.toUpperCase())} placeholder="TRACKING CODE" maxLength="8"
               style={{padding:'6px 10px',border:'1px solid var(--border)',borderRadius:6,background:'var(--bg-2)',color:'var(--text)',fontFamily:'JetBrains Mono',fontSize:12,letterSpacing:1,width:130}}/>
@@ -223,13 +227,29 @@ export default function PublicHome() {
 
                 <h3 style={{margin:'24px 0 16px'}}>Extras</h3>
                 <div className="checkbox-row">
-                  <label className="checkbox-item">
-                    <input type="checkbox" checked={form.needTngCard} onChange={set('needTngCard')}/>
-                    <span className="checkbox-label">Need <strong>Touch 'n Go</strong> card</span>
+                  <label className={`checkbox-item ${cardStatus && cardStatus.availableTng <= 0 ? 'disabled' : ''}`}>
+                    <input type="checkbox" checked={form.needTngCard} disabled={cardStatus && cardStatus.availableTng <= 0}
+                      onChange={set('needTngCard')}/>
+                    <span className="checkbox-label">
+                      Need <strong>Touch 'n Go</strong> card
+                      {cardStatus && (
+                        <span className="mono" style={{display:'block',fontSize:10,color: cardStatus.availableTng <= 0 ? 'var(--red)' : 'var(--muted)',marginTop:2}}>
+                          {cardStatus.availableTng <= 0 ? 'all cards in use' : `${cardStatus.availableTng}/${cardStatus.totalTng} available`}
+                        </span>
+                      )}
+                    </span>
                   </label>
-                  <label className="checkbox-item">
-                    <input type="checkbox" checked={form.needFuelCard} onChange={set('needFuelCard')}/>
-                    <span className="checkbox-label">Need <strong>Fuel</strong> card</span>
+                  <label className={`checkbox-item ${cardStatus && cardStatus.availableFuel <= 0 ? 'disabled' : ''}`}>
+                    <input type="checkbox" checked={form.needFuelCard} disabled={cardStatus && cardStatus.availableFuel <= 0}
+                      onChange={set('needFuelCard')}/>
+                    <span className="checkbox-label">
+                      Need <strong>Fuel</strong> card
+                      {cardStatus && (
+                        <span className="mono" style={{display:'block',fontSize:10,color: cardStatus.availableFuel <= 0 ? 'var(--red)' : 'var(--muted)',marginTop:2}}>
+                          {cardStatus.availableFuel <= 0 ? 'all cards in use' : `${cardStatus.availableFuel}/${cardStatus.totalFuel} available`}
+                        </span>
+                      )}
+                    </span>
                   </label>
                 </div>
 
