@@ -6,8 +6,12 @@ TOKEN_FILE="/etc/car-booking/github-token"
 STATE_FILE="/var/lib/car-booking/last-deploy-run-id"
 LOG_FILE="/var/log/car-booking-deploy.log"
 WORK_DIR="/var/tmp/car-booking-deploy"
+LOCK_FILE="/var/lock/car-booking-deploy.lock"
 
 mkdir -p "$WORK_DIR" "$(dirname "$STATE_FILE")"
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || exit 0
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
@@ -68,7 +72,7 @@ chown -R www-data:www-data /var/www/car-booking
 log "Starting service..."
 systemctl start car-booking
 
-for i in $(seq 1 10); do
+for i in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:5000/health > /dev/null 2>&1; then
     log "Healthy. Deploy successful (run $RUN_ID, sha ${RUN_SHA:0:7})."
     echo "$RUN_ID" > "$STATE_FILE"
