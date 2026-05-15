@@ -2,7 +2,7 @@
 
 Company car reservation system. ASP.NET Core Web API + React (Vite) + MySQL.
 
-![CI](../../actions/workflows/ci.yml/badge.svg) ![CD](../../actions/workflows/deploy.yml/badge.svg)
+![CI](../../actions/workflows/ci.yml/badge.svg)
 
 ## Quick Start (Local Dev)
 
@@ -57,52 +57,64 @@ Generate a key: `openssl rand -base64 48`
 
 ## CI / CD
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) — runs on every PR and `main` push. Builds backend (publishes for `linux-arm`) + frontend on `ubuntu-latest`, uploads both as artifacts.
-- **CD** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) — triggers on successful CI run on `main` (or manual dispatch). The self-hosted runner on the Banana Pi downloads the CI artifacts, rsyncs them into `/opt/car-booking` + `/var/www/car-booking`, restarts the service, and health-checks.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) — runs on every PR and `main` push. Builds backend (publishes for `linux-arm`) + frontend on `ubuntu-latest`, uploads both as artifacts (retention 7 days).
+- **CD** — pull-based. A cron job on the Banana Pi polls the GitHub API every 5 minutes for the latest successful CI run on `main`; when the run id changes, it downloads the artifacts, rsyncs them into `/opt/car-booking` + `/var/www/car-booking`, restarts the service, and health-checks.
 
-Build always happens on `ubuntu-latest` because the Banana Pi M2 Ultra is `armv7l` (32-bit), and Microsoft does not publish a .NET 8 SDK for that arch — only the runtime.
+Why pull-based and not a self-hosted runner: the Banana Pi M2 Ultra is `armv7l` (32-bit) on Debian 13. The GitHub Actions runner v2.334.0 bundles .NET 6, which fails TLS handshakes against newer OpenSSL 3.x trust stores (`NotTimeValid` certificate chain errors). Pull-based deploy uses system `curl` (which works fine) and avoids the runner entirely.
 
-### One-time CD setup on the Banana Pi
+### Pi-side setup
+
+1. **Create a fine-grained GitHub PAT** at https://github.com/settings/personal-access-tokens/new
+   - Repository access: only this repo
+   - Permissions: `Actions: Read`, `Contents: Read`, `Metadata: Read`
+
+2. **Drop the token on the Pi** (replace `<PAT>`):
+
+   ```bash
+   sudo mkdir -p /etc/car-booking
+   echo '<PAT>' | sudo tee /etc/car-booking/github-token > /dev/null
+   sudo chmod 600 /etc/car-booking/github-token
+   sudo chown root:root /etc/car-booking/github-token
+   sudo apt install -y jq unzip
+   ```
+
+3. **Install the deploy script** — copy [deploy/car-booking-deploy.sh](deploy/car-booking-deploy.sh) to `/usr/local/bin/`:
+
+   ```bash
+   sudo cp deploy/car-booking-deploy.sh /usr/local/bin/
+   sudo chmod 750 /usr/local/bin/car-booking-deploy.sh
+   sudo chown root:root /usr/local/bin/car-booking-deploy.sh
+   ```
+
+4. **Install the cron job** — copy [deploy/car-booking-deploy.cron](deploy/car-booking-deploy.cron) to `/etc/cron.d/`:
+
+   ```bash
+   sudo cp deploy/car-booking-deploy.cron /etc/cron.d/car-booking-deploy
+   sudo chmod 644 /etc/cron.d/car-booking-deploy
+   ```
+
+5. **Trigger the first deploy manually** to verify everything wires up:
+
+   ```bash
+   sudo /usr/local/bin/car-booking-deploy.sh
+   ```
+
+   Subsequent runs are silent until a new CI run-id appears. Logs land in `/var/log/car-booking-deploy.log`; last-deployed run-id is tracked in `/var/lib/car-booking/last-deploy-run-id`.
+
+### Force redeploy
+
+Clear the state file, next cron tick will pull again:
 
 ```bash
-# 1. Create runner user
-sudo useradd -m -s /bin/bash gha
-
-# 2. Passwordless sudo for ONLY the deploy commands (gha does NOT need general sudo)
-sudo tee /etc/sudoers.d/gha-deploy > /dev/null <<'EOF'
-Cmnd_Alias DEPLOY_RSYNC = /usr/bin/rsync -a --delete * /opt/car-booking/, /usr/bin/rsync -a --delete * /var/www/car-booking/
-Cmnd_Alias DEPLOY_CHOWN = /usr/bin/chown -R www-data\:www-data /opt/car-booking, /usr/bin/chown -R www-data\:www-data /var/www/car-booking
-Cmnd_Alias DEPLOY_SVC = /usr/bin/systemctl stop car-booking, /usr/bin/systemctl start car-booking, /usr/bin/systemctl status car-booking *
-
-gha ALL=(root) NOPASSWD: DEPLOY_RSYNC, DEPLOY_CHOWN, DEPLOY_SVC
-EOF
-sudo chmod 440 /etc/sudoers.d/gha-deploy
-sudo visudo -cf /etc/sudoers.d/gha-deploy   # must print "parsed OK"
-
-# 3. Install GitHub Actions self-hosted runner (use the right arch — armv7 = linux-arm, NOT arm64)
-#    Get the token from: GitHub → repo → Settings → Actions → Runners → New self-hosted runner
-RUNNER_VERSION=2.334.0
-sudo -iu gha bash <<EOF
-mkdir -p ~/actions-runner && cd ~/actions-runner
-curl -o runner.tar.gz -L https://github.com/actions/runner/releases/download/v\$RUNNER_VERSION/actions-runner-linux-arm-\$RUNNER_VERSION.tar.gz
-tar xzf runner.tar.gz
-./config.sh --unattended --url https://github.com/<OWNER>/<REPO> --token <TOKEN> --name banana-pi --labels banana-pi,production --work _work
-EOF
-
-# 4. Install as a service
-cd /home/gha/actions-runner
-sudo ./svc.sh install gha
-sudo ./svc.sh start
-sudo ./svc.sh status
+sudo rm -f /var/lib/car-booking/last-deploy-run-id
+sudo /usr/local/bin/car-booking-deploy.sh   # or wait for cron
 ```
-
-The runner does NOT need a .NET SDK or Node — it only downloads pre-built artifacts and rsyncs them.
 
 Push to `main` → deploy.yml triggers → ~2 min later the Pi is running the new build.
 
 ### Rollback
 
-The workflow stops the service before rsync, so a failed deploy leaves the previous binaries in place — just `git revert` the bad commit and push, or `sudo systemctl start car-booking` after restoring from snapshot.
+If a deploy fails health check, the service is left stopped and the state file is NOT updated — so the next cron tick will retry the same artifact. To roll back to a previous green build, either `git revert` the bad commit and push (CI rebuilds, cron picks it up), or manually rsync from a known-good artifact.
 
 ## Production Deploy (Banana Pi)
 

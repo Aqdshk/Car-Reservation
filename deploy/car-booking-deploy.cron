@@ -1,0 +1,6 @@
+# Poll GitHub for new CI artifacts every 5 minutes and deploy if newer.
+# Install: sudo cp deploy/car-booking-deploy.cron /etc/cron.d/car-booking-deploy
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+*/5 * * * * root /usr/local/bin/car-booking-deploy.sh >> /var/log/car-booking-deploy.log 2>&1
