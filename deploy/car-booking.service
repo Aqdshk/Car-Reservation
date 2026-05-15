@@ -12,5 +12,11 @@ User=www-data
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 
+# Secrets — populate via /etc/car-booking/env (chmod 600, owned by www-data)
+#   CARBOOKING_JWT_KEY=<min 32-byte random string>
+#   CARBOOKING_DB_CONN=server=localhost;port=3306;database=car_booking;user=carbooking;password=<strong>;TreatTinyAsBoolean=true
+#   CARBOOKING_SEED_ADMIN_PASSWORD=<initial admin password — only used on first run>
+EnvironmentFile=/etc/car-booking/env
+
 [Install]
 WantedBy=multi-user.target

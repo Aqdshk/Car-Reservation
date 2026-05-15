@@ -2,6 +2,7 @@ using CarBooking.Api.Data;
 using CarBooking.Api.Dtos;
 using CarBooking.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace CarBooking.Api.Controllers;
@@ -15,6 +16,7 @@ public class AuthController : ControllerBase
     public AuthController(AppDbContext db, JwtService jwt) { _db = db; _jwt = jwt; }
 
     [HttpPost("login")]
+    [EnableRateLimiting("login")]
     public async Task<IActionResult> Login(LoginDto dto)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email && u.Role == "Admin");
