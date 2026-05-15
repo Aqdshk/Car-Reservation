@@ -11,9 +11,17 @@ namespace CarBooking.Api.Controllers;
 [Route("api/[controller]")]
 public class ReservationsController : ControllerBase
 {
+    // Serializes booking-create and approve flows on this single-instance deployment so the
+    // capacity checks (vehicle slot, TnG/Fuel cards) cannot be raced by concurrent requests.
+    private static readonly SemaphoreSlim _bookingLock = new(1, 1);
+
     private readonly AppDbContext _db;
+    private readonly IConfiguration _cfg;
     private readonly IWebHostEnvironment _env;
-    public ReservationsController(AppDbContext db, IWebHostEnvironment env) { _db = db; _env = env; }
+    public ReservationsController(AppDbContext db, IConfiguration cfg, IWebHostEnvironment env)
+    {
+        _db = db; _cfg = cfg; _env = env;
+    }
 
     private static ReservationDto Map(Reservation r) => new(
         r.Id, r.TrackingCode,
@@ -36,7 +44,7 @@ public class ReservationsController : ControllerBase
     {
         get
         {
-            var path = Path.Combine(_env.ContentRootPath, "uploads");
+            var path = _cfg["UPLOADS_DIR"] ?? Path.Combine(_env.ContentRootPath, "uploads");
             Directory.CreateDirectory(path);
             return path;
         }
@@ -48,55 +56,56 @@ public class ReservationsController : ControllerBase
     {
         if (dto.EndTime <= dto.StartTime)
             return BadRequest(new { message = "End time must be after start time" });
-        if (string.IsNullOrWhiteSpace(dto.BookerName))
-            return BadRequest(new { message = "Booker name is required" });
 
-        var conflict = await _db.Reservations.AnyAsync(r =>
-            r.VehicleId == dto.VehicleId && r.Status == "Approved" &&
-            r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
-        if (conflict)
-            return BadRequest(new { message = "Vehicle already booked during this time slot" });
-
-        // Card availability check (overlapping approved bookings using cards)
-        var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
-        if (dto.NeedTngCard)
+        await _bookingLock.WaitAsync();
+        try
         {
-            var tngInUse = await _db.Reservations.CountAsync(r =>
-                r.Status == "Approved" && r.NeedTngCard && r.CheckedOutAt == null &&
+            var conflict = await _db.Reservations.AnyAsync(r =>
+                r.VehicleId == dto.VehicleId && r.Status == ReservationStatus.Approved &&
                 r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
-            if (tngInUse >= settings.TotalTngCards)
-                return BadRequest(new { message = "No TnG card available for this period" });
-        }
-        if (dto.NeedFuelCard)
-        {
-            var fuelInUse = await _db.Reservations.CountAsync(r =>
-                r.Status == "Approved" && r.NeedFuelCard && r.CheckedOutAt == null &&
-                r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
-            if (fuelInUse >= settings.TotalFuelCards)
-                return BadRequest(new { message = "No Fuel card available for this period" });
-        }
+            if (conflict)
+                return BadRequest(new { message = "Vehicle already booked during this time slot" });
 
-        // Generate unique tracking code
-        string code;
-        do { code = GenerateCode(); }
-        while (await _db.Reservations.AnyAsync(r => r.TrackingCode == code));
+            var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
+            if (dto.NeedTngCard)
+            {
+                var tngInUse = await _db.Reservations.CountAsync(r =>
+                    r.Status == ReservationStatus.Approved && r.NeedTngCard && r.CheckedOutAt == null &&
+                    r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
+                if (tngInUse >= settings.TotalTngCards)
+                    return BadRequest(new { message = "No TnG card available for this period" });
+            }
+            if (dto.NeedFuelCard)
+            {
+                var fuelInUse = await _db.Reservations.CountAsync(r =>
+                    r.Status == ReservationStatus.Approved && r.NeedFuelCard && r.CheckedOutAt == null &&
+                    r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
+                if (fuelInUse >= settings.TotalFuelCards)
+                    return BadRequest(new { message = "No Fuel card available for this period" });
+            }
 
-        var r = new Reservation
-        {
-            TrackingCode = code,
-            BookerName = dto.BookerName.Trim(),
-            BookerEmail = dto.BookerEmail, BookerPhone = dto.BookerPhone, Department = dto.Department,
-            VehicleId = dto.VehicleId,
-            StartTime = dto.StartTime, EndTime = dto.EndTime,
-            Destination = dto.Destination, Passengers = dto.Passengers,
-            DistanceKm = dto.DistanceKm,
-            NeedTngCard = dto.NeedTngCard, NeedFuelCard = dto.NeedFuelCard,
-            Notes = dto.Notes, Status = "Pending"
-        };
-        _db.Reservations.Add(r);
-        await _db.SaveChangesAsync();
-        await _db.Entry(r).Reference(x => x.Vehicle).LoadAsync();
-        return Ok(Map(r));
+            string code;
+            do { code = GenerateCode(); }
+            while (await _db.Reservations.AnyAsync(r => r.TrackingCode == code));
+
+            var r = new Reservation
+            {
+                TrackingCode = code,
+                BookerName = dto.BookerName.Trim(),
+                BookerEmail = dto.BookerEmail, BookerPhone = dto.BookerPhone, Department = dto.Department,
+                VehicleId = dto.VehicleId,
+                StartTime = dto.StartTime, EndTime = dto.EndTime,
+                Destination = dto.Destination, Passengers = dto.Passengers,
+                DistanceKm = dto.DistanceKm,
+                NeedTngCard = dto.NeedTngCard, NeedFuelCard = dto.NeedFuelCard,
+                Notes = dto.Notes, Status = ReservationStatus.Pending
+            };
+            _db.Reservations.Add(r);
+            await _db.SaveChangesAsync();
+            await _db.Entry(r).Reference(x => x.Vehicle).LoadAsync();
+            return Ok(Map(r));
+        }
+        finally { _bookingLock.Release(); }
     }
 
     // PUBLIC — vehicle availability
@@ -104,7 +113,7 @@ public class ReservationsController : ControllerBase
     public async Task<IActionResult> Busy(int vehicleId)
     {
         var list = await _db.Reservations
-            .Where(r => r.VehicleId == vehicleId && (r.Status == "Approved" || r.Status == "Pending"))
+            .Where(r => r.VehicleId == vehicleId && (r.Status == ReservationStatus.Approved || r.Status == ReservationStatus.Pending))
             .Where(r => r.EndTime > DateTime.UtcNow.AddDays(-1))
             .OrderBy(r => r.StartTime)
             .Select(r => new BusySlotDto(r.Id, r.VehicleId, r.StartTime, r.EndTime, r.Status, r.BookerName))
@@ -130,7 +139,7 @@ public class ReservationsController : ControllerBase
         var r = await _db.Reservations.Include(x => x.Vehicle)
             .FirstOrDefaultAsync(x => x.TrackingCode == code.ToUpper());
         if (r is null) return NotFound(new { message = "Booking not found" });
-        if (r.Status != "Approved") return BadRequest(new { message = "Booking must be approved before check-in" });
+        if (r.Status != ReservationStatus.Approved) return BadRequest(new { message = "Booking must be approved before check-in" });
         if (r.CheckedInAt.HasValue) return BadRequest(new { message = "Already checked in" });
         if (mileage < 0) return BadRequest(new { message = "Mileage must be a positive number" });
         if (photo is null || photo.Length == 0) return BadRequest(new { message = "Photo is required" });
@@ -140,7 +149,7 @@ public class ReservationsController : ControllerBase
         if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
             return BadRequest(new { message = "Photo must be JPG, PNG, or WEBP" });
 
-        var filename = $"checkin-{code}-{Guid.NewGuid():N}{ext}";
+        var filename = $"checkin-{r.TrackingCode}-{Guid.NewGuid():N}{ext}";
         var path = Path.Combine(UploadsDir, filename);
         await using (var fs = new FileStream(path, FileMode.Create))
             await photo.CopyToAsync(fs);
@@ -171,7 +180,7 @@ public class ReservationsController : ControllerBase
         if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
             return BadRequest(new { message = "Photo must be JPG, PNG, or WEBP" });
 
-        var filename = $"checkout-{code}-{Guid.NewGuid():N}{ext}";
+        var filename = $"checkout-{r.TrackingCode}-{Guid.NewGuid():N}{ext}";
         var path = Path.Combine(UploadsDir, filename);
         await using (var fs = new FileStream(path, FileMode.Create))
             await photo.CopyToAsync(fs);
@@ -183,12 +192,17 @@ public class ReservationsController : ControllerBase
         return Ok(Map(r));
     }
 
-    // PUBLIC — serve photo
-    [HttpGet("photo/{filename}")]
-    public IActionResult GetPhoto(string filename)
+    // PUBLIC — serve photo, scoped by tracking code (filename must belong to that booking)
+    [HttpGet("track/{code}/photo/{filename}")]
+    public IActionResult GetPhoto(string code, string filename)
     {
-        if (filename.Contains("..") || filename.Contains("/") || filename.Contains("\\"))
+        if (filename.Contains("..") || filename.Contains('/') || filename.Contains('\\'))
             return BadRequest();
+
+        var upperCode = code.ToUpper();
+        if (!filename.StartsWith($"checkin-{upperCode}-") && !filename.StartsWith($"checkout-{upperCode}-"))
+            return NotFound();
+
         var path = Path.Combine(UploadsDir, filename);
         if (!System.IO.File.Exists(path)) return NotFound();
         var ext = Path.GetExtension(filename).ToLowerInvariant();
@@ -196,14 +210,18 @@ public class ReservationsController : ControllerBase
         return PhysicalFile(path, mime);
     }
 
-    // ADMIN — list all
+    // ADMIN — list all (paginated)
     [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List([FromQuery] int page = 1, [FromQuery] int pageSize = 100)
     {
-        var list = await _db.Reservations.Include(r => r.Vehicle)
-            .OrderByDescending(r => r.CreatedAt).ToListAsync();
-        return Ok(list.Select(Map));
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 500);
+
+        var query = _db.Reservations.Include(r => r.Vehicle).OrderByDescending(r => r.CreatedAt);
+        var total = await query.CountAsync();
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        return Ok(new { total, page, pageSize, items = items.Select(Map) });
     }
 
     [HttpGet("pending")]
@@ -211,7 +229,7 @@ public class ReservationsController : ControllerBase
     public async Task<IActionResult> Pending()
     {
         var list = await _db.Reservations.Include(r => r.Vehicle)
-            .Where(r => r.Status == "Pending").OrderBy(r => r.StartTime).ToListAsync();
+            .Where(r => r.Status == ReservationStatus.Pending).OrderBy(r => r.StartTime).ToListAsync();
         return Ok(list.Select(Map));
     }
 
@@ -223,7 +241,7 @@ public class ReservationsController : ControllerBase
         var to = DateTime.UtcNow.AddDays(90);
         var list = await _db.Reservations.Include(r => r.Vehicle)
             .Where(r => r.StartTime < to && r.EndTime > from)
-            .Where(r => r.Status != "Rejected")
+            .Where(r => r.Status != ReservationStatus.Rejected)
             .OrderBy(r => r.StartTime).ToListAsync();
         return Ok(list.Select(Map));
     }
@@ -232,41 +250,47 @@ public class ReservationsController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateStatus(int id, UpdateStatusDto dto)
     {
-        var r = await _db.Reservations.Include(x => x.Vehicle).FirstOrDefaultAsync(x => x.Id == id);
-        if (r is null) return NotFound();
-        if (dto.Status is not ("Approved" or "Rejected" or "Pending"))
+        if (!ReservationStatus.IsValid(dto.Status))
             return BadRequest(new { message = "Invalid status" });
 
-        if (dto.Status == "Approved")
+        await _bookingLock.WaitAsync();
+        try
         {
-            var conflict = await _db.Reservations.AnyAsync(x =>
-                x.Id != id && x.VehicleId == r.VehicleId && x.Status == "Approved" &&
-                x.StartTime < r.EndTime && x.EndTime > r.StartTime);
-            if (conflict)
-                return BadRequest(new { message = "Cannot approve — time slot conflicts with another approved booking" });
+            var r = await _db.Reservations.Include(x => x.Vehicle).FirstOrDefaultAsync(x => x.Id == id);
+            if (r is null) return NotFound();
 
-            var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
-            if (r.NeedTngCard)
+            if (dto.Status == ReservationStatus.Approved)
             {
-                var tngInUse = await _db.Reservations.CountAsync(x =>
-                    x.Id != id && x.Status == "Approved" && x.NeedTngCard && x.CheckedOutAt == null &&
+                var conflict = await _db.Reservations.AnyAsync(x =>
+                    x.Id != id && x.VehicleId == r.VehicleId && x.Status == ReservationStatus.Approved &&
                     x.StartTime < r.EndTime && x.EndTime > r.StartTime);
-                if (tngInUse >= settings.TotalTngCards)
-                    return BadRequest(new { message = "Cannot approve — no TnG card available for this period" });
+                if (conflict)
+                    return BadRequest(new { message = "Cannot approve — time slot conflicts with another approved booking" });
+
+                var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
+                if (r.NeedTngCard)
+                {
+                    var tngInUse = await _db.Reservations.CountAsync(x =>
+                        x.Id != id && x.Status == ReservationStatus.Approved && x.NeedTngCard && x.CheckedOutAt == null &&
+                        x.StartTime < r.EndTime && x.EndTime > r.StartTime);
+                    if (tngInUse >= settings.TotalTngCards)
+                        return BadRequest(new { message = "Cannot approve — no TnG card available for this period" });
+                }
+                if (r.NeedFuelCard)
+                {
+                    var fuelInUse = await _db.Reservations.CountAsync(x =>
+                        x.Id != id && x.Status == ReservationStatus.Approved && x.NeedFuelCard && x.CheckedOutAt == null &&
+                        x.StartTime < r.EndTime && x.EndTime > r.StartTime);
+                    if (fuelInUse >= settings.TotalFuelCards)
+                        return BadRequest(new { message = "Cannot approve — no Fuel card available for this period" });
+                }
             }
-            if (r.NeedFuelCard)
-            {
-                var fuelInUse = await _db.Reservations.CountAsync(x =>
-                    x.Id != id && x.Status == "Approved" && x.NeedFuelCard && x.CheckedOutAt == null &&
-                    x.StartTime < r.EndTime && x.EndTime > r.StartTime);
-                if (fuelInUse >= settings.TotalFuelCards)
-                    return BadRequest(new { message = "Cannot approve — no Fuel card available for this period" });
-            }
+
+            r.Status = dto.Status;
+            await _db.SaveChangesAsync();
+            return Ok(Map(r));
         }
-
-        r.Status = dto.Status;
-        await _db.SaveChangesAsync();
-        return Ok(Map(r));
+        finally { _bookingLock.Release(); }
     }
 
     [HttpDelete("{id}")]

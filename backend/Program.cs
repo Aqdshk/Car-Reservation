@@ -88,6 +88,10 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
 
+// Ensure uploads directory exists at startup so the controller never races on first request.
+var uploadsDir = cfg["UPLOADS_DIR"] ?? Path.Combine(app.Environment.ContentRootPath, "uploads");
+Directory.CreateDirectory(uploadsDir);
+
 // Auto-seed on startup
 using (var scope = app.Services.CreateScope())
 {

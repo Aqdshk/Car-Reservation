@@ -17,5 +17,8 @@ public class AppDbContext : DbContext
         b.Entity<User>().HasIndex(u => u.Email).IsUnique();
         b.Entity<Vehicle>().HasIndex(v => v.PlateNumber).IsUnique();
         b.Entity<Reservation>().HasOne(r => r.Vehicle).WithMany().HasForeignKey(r => r.VehicleId);
+        b.Entity<Reservation>().HasIndex(r => r.TrackingCode).IsUnique();
+        b.Entity<Reservation>().HasIndex(r => new { r.VehicleId, r.Status, r.StartTime, r.EndTime });
+        b.Entity<Reservation>().HasIndex(r => r.Status);
     }
 }

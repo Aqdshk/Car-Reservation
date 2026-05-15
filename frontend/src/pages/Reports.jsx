@@ -17,7 +17,7 @@ export default function Reports() {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0,10));
 
   useEffect(() => {
-    api.get('/reservations').then(r => setBookings(r.data));
+    api.get('/reservations', { params: { pageSize: 500 } }).then(r => setBookings(r.data.items));
     api.get('/vehicles').then(r => setVehicles(r.data));
   }, []);
 

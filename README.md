@@ -7,11 +7,7 @@ Company car reservation system. ASP.NET Core Web API + React (Vite) + MySQL.
 ## Quick Start (Local Dev)
 
 ### 1. Database
-Start MySQL Server, then:
-```sql
-mysql -u root -p < database/schema.sql
-```
-Or just let the backend auto-create the schema on first run (`EnsureCreated`).
+Start MySQL Server. The backend auto-creates the schema on first run via EF Core `EnsureCreated`. No migrations yet — schema changes after first deploy require manual `ALTER TABLE`.
 
 ### 2. Backend
 ```bash
@@ -48,6 +44,7 @@ The backend reads these in priority order: env var → `appsettings.{Env}.json` 
 | `CARBOOKING_JWT_KEY` | JWT signing key (min 32 bytes). Required in Production. |
 | `CARBOOKING_DB_CONN` | MySQL connection string. |
 | `CARBOOKING_SEED_ADMIN_PASSWORD` | Initial admin password — only used on first run. |
+| `CARBOOKING_UPLOADS_DIR` | Where check-in/checkout photos are stored. Default `<ContentRoot>/uploads` in dev; on the Pi set to `/var/lib/car-booking/uploads` so the directory survives `rsync --delete` deploys. |
 
 Generate a key: `openssl rand -base64 48`
 
@@ -92,6 +89,21 @@ Why pull-based and not a self-hosted runner: the Banana Pi M2 Ultra is `armv7l` 
    sudo cp deploy/car-booking-deploy.cron /etc/cron.d/car-booking-deploy
    sudo chmod 644 /etc/cron.d/car-booking-deploy
    ```
+
+   And install logrotate so the deploy log doesn't grow forever:
+
+   ```bash
+   sudo cp deploy/car-booking-deploy.logrotate /etc/logrotate.d/car-booking-deploy
+   ```
+
+   Make sure the uploads directory exists outside `/opt/car-booking` so it survives `rsync --delete`:
+
+   ```bash
+   sudo mkdir -p /var/lib/car-booking/uploads
+   sudo chown -R www-data:www-data /var/lib/car-booking
+   ```
+
+   And export `CARBOOKING_UPLOADS_DIR=/var/lib/car-booking/uploads` in `/etc/car-booking/env`.
 
 5. **Trigger the first deploy manually** to verify everything wires up:
 

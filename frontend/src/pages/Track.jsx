@@ -162,7 +162,7 @@ export default function Track() {
                       {booking.startMileagePhoto && (
                         <div style={{marginTop:14}}>
                           <div className="info-label">PHOTO PROOF</div>
-                          <img src={`/api/reservations/photo/${booking.startMileagePhoto}`} alt="Start mileage" className="proof-photo"/>
+                          <img src={`/api/reservations/track/${booking.trackingCode}/photo/${booking.startMileagePhoto}`} alt="Start mileage" className="proof-photo"/>
                         </div>
                       )}
                     </div>
@@ -205,7 +205,7 @@ export default function Track() {
                         {booking.endMileagePhoto && (
                           <div style={{marginTop:14}}>
                             <div className="info-label">PHOTO PROOF</div>
-                            <img src={`/api/reservations/photo/${booking.endMileagePhoto}`} alt="End mileage" className="proof-photo"/>
+                            <img src={`/api/reservations/track/${booking.trackingCode}/photo/${booking.endMileagePhoto}`} alt="End mileage" className="proof-photo"/>
                           </div>
                         )}
                       </div>

@@ -10,14 +10,14 @@ export default function ManageBookings() {
   const [filter, setFilter] = useState('All');
   const [detail, setDetail] = useState(null);
 
-  const load = () => api.get('/reservations').then(r => setItems(r.data));
+  const load = () => api.get('/reservations', { params: { pageSize: 500 } }).then(r => setItems(r.data.items));
   useEffect(() => { load(); }, []);
 
   const act = async (id, status) => {
     await api.patch(`/reservations/${id}/status`, { status });
     load();
     if (detail?.id === id) {
-      const updated = (await api.get('/reservations')).data.find(b => b.id === id);
+      const updated = (await api.get('/reservations', { params: { pageSize: 500 } })).data.items.find(b => b.id === id);
       setDetail(updated);
     }
   };
@@ -126,7 +126,7 @@ export default function ManageBookings() {
                   <>
                     <div className="mono" style={{fontSize:18,fontWeight:700}}>{detail.startMileage?.toLocaleString()} km</div>
                     <div className="mono" style={{fontSize:11,color:'var(--muted)'}}>{fmtFull(detail.checkedInAt)}</div>
-                    {detail.startMileagePhoto && <img src={`/api/reservations/photo/${detail.startMileagePhoto}`} alt="Start mileage" className="proof-photo" style={{marginTop:8}}/>}
+                    {detail.startMileagePhoto && <img src={`/api/reservations/track/${detail.trackingCode}/photo/${detail.startMileagePhoto}`} alt="Start mileage" className="proof-photo" style={{marginTop:8}}/>}
                   </>
                 ) : <div style={{color:'var(--muted)',fontSize:13}}>Not checked in yet</div>}
               </div>
@@ -136,7 +136,7 @@ export default function ManageBookings() {
                   <>
                     <div className="mono" style={{fontSize:18,fontWeight:700}}>{detail.endMileage?.toLocaleString()} km</div>
                     <div className="mono" style={{fontSize:11,color:'var(--muted)'}}>{fmtFull(detail.checkedOutAt)}</div>
-                    {detail.endMileagePhoto && <img src={`/api/reservations/photo/${detail.endMileagePhoto}`} alt="End mileage" className="proof-photo" style={{marginTop:8}}/>}
+                    {detail.endMileagePhoto && <img src={`/api/reservations/track/${detail.trackingCode}/photo/${detail.endMileagePhoto}`} alt="End mileage" className="proof-photo" style={{marginTop:8}}/>}
                   </>
                 ) : <div style={{color:'var(--muted)',fontSize:13}}>Not checked out yet</div>}
               </div>
