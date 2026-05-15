@@ -31,9 +31,9 @@ jobs:
         run: dotnet test --no-build --configuration Release --verbosity normal
         continue-on-error: true  # remove once tests exist
 
-      - name: Publish (linux-arm64)
+      - name: Publish (linux-arm)
         if: github.ref == 'refs/heads/main'
-        run: dotnet publish -c Release -r linux-arm64 --self-contained false -o publish
+        run: dotnet publish -c Release -r linux-arm --self-contained false -o publish
 
       - name: Upload backend artifact
         if: github.ref == 'refs/heads/main'

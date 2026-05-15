@@ -57,41 +57,46 @@ Generate a key: `openssl rand -base64 48`
 
 ## CI / CD
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) — runs on every PR and `main` push. Builds backend + frontend, runs tests, uploads artifacts.
-- **CD** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) — runs on `main` push (and manual dispatch). Builds on the Pi via a self-hosted runner and deploys to `/opt/car-booking` + `/var/www/car-booking`, then health-checks.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) — runs on every PR and `main` push. Builds backend (publishes for `linux-arm`) + frontend on `ubuntu-latest`, uploads both as artifacts.
+- **CD** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) — triggers on successful CI run on `main` (or manual dispatch). The self-hosted runner on the Banana Pi downloads the CI artifacts, rsyncs them into `/opt/car-booking` + `/var/www/car-booking`, restarts the service, and health-checks.
+
+Build always happens on `ubuntu-latest` because the Banana Pi M2 Ultra is `armv7l` (32-bit), and Microsoft does not publish a .NET 8 SDK for that arch — only the runtime.
 
 ### One-time CD setup on the Banana Pi
 
 ```bash
-# 1. Create runner user (or reuse existing one — must NOT be www-data)
+# 1. Create runner user
 sudo useradd -m -s /bin/bash gha
-sudo usermod -aG sudo gha
 
-# 2. Install GitHub Actions self-hosted runner
-#    Get the token from: GitHub repo → Settings → Actions → Runners → New self-hosted runner
-sudo -iu gha bash <<'EOF'
-mkdir actions-runner && cd actions-runner
-curl -o runner.tar.gz -L https://github.com/actions/runner/releases/download/v2.319.1/actions-runner-linux-arm64-2.319.1.tar.gz
+# 2. Passwordless sudo for ONLY the deploy commands (gha does NOT need general sudo)
+sudo tee /etc/sudoers.d/gha-deploy > /dev/null <<'EOF'
+Cmnd_Alias DEPLOY_RSYNC = /usr/bin/rsync -a --delete * /opt/car-booking/, /usr/bin/rsync -a --delete * /var/www/car-booking/
+Cmnd_Alias DEPLOY_CHOWN = /usr/bin/chown -R www-data\:www-data /opt/car-booking, /usr/bin/chown -R www-data\:www-data /var/www/car-booking
+Cmnd_Alias DEPLOY_SVC = /usr/bin/systemctl stop car-booking, /usr/bin/systemctl start car-booking, /usr/bin/systemctl status car-booking *
+
+gha ALL=(root) NOPASSWD: DEPLOY_RSYNC, DEPLOY_CHOWN, DEPLOY_SVC
+EOF
+sudo chmod 440 /etc/sudoers.d/gha-deploy
+sudo visudo -cf /etc/sudoers.d/gha-deploy   # must print "parsed OK"
+
+# 3. Install GitHub Actions self-hosted runner (use the right arch — armv7 = linux-arm, NOT arm64)
+#    Get the token from: GitHub → repo → Settings → Actions → Runners → New self-hosted runner
+RUNNER_VERSION=2.334.0
+sudo -iu gha bash <<EOF
+mkdir -p ~/actions-runner && cd ~/actions-runner
+curl -o runner.tar.gz -L https://github.com/actions/runner/releases/download/v\$RUNNER_VERSION/actions-runner-linux-arm-\$RUNNER_VERSION.tar.gz
 tar xzf runner.tar.gz
-./config.sh --url https://github.com/<OWNER>/<REPO> --token <TOKEN> --labels banana-pi,production
+./config.sh --unattended --url https://github.com/<OWNER>/<REPO> --token <TOKEN> --name banana-pi --labels banana-pi,production --work _work
 EOF
 
-# 3. Install as a service
+# 4. Install as a service
 cd /home/gha/actions-runner
 sudo ./svc.sh install gha
 sudo ./svc.sh start
-
-# 4. Grant passwordless sudo for ONLY the deploy commands
-sudo tee /etc/sudoers.d/gha-deploy > /dev/null <<'EOF'
-gha ALL=(root) NOPASSWD: /bin/systemctl stop car-booking, /bin/systemctl start car-booking, /bin/systemctl status car-booking, /usr/bin/rsync -a --delete *, /bin/chown -R www-data\:www-data /opt/car-booking, /bin/chown -R www-data\:www-data /var/www/car-booking
-EOF
-sudo chmod 440 /etc/sudoers.d/gha-deploy
-
-# 5. Install build deps
-sudo apt install -y nodejs npm  # or use nvm
-# .NET SDK 8 should already be installed for the runtime; if not:
-sudo apt install -y dotnet-sdk-8.0
+sudo ./svc.sh status
 ```
+
+The runner does NOT need a .NET SDK or Node — it only downloads pre-built artifacts and rsyncs them.
 
 Push to `main` → deploy.yml triggers → ~2 min later the Pi is running the new build.
 
@@ -105,7 +110,7 @@ The workflow stops the service before rsync, so a failed deploy leaves the previ
 ```bash
 # Backend
 cd backend
-dotnet publish -c Release -r linux-arm64 --self-contained false -o publish
+dotnet publish -c Release -r linux-arm --self-contained false -o publish
 
 # Frontend
 cd ../frontend
