@@ -16,7 +16,7 @@ export default function AdminLogin() {
     setErr(''); setLoading(true);
     try {
       await login(email, password);
-      nav('/admin');
+      window.location.replace('/admin');
     } catch (e) {
       setErr(e.response?.data?.message || 'Login failed');
     } finally { setLoading(false); }

@@ -13,7 +13,9 @@ public class JwtService
 
     public string Generate(User user)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_cfg["Jwt:Key"]!));
+        var keyStr = _cfg["JWT_KEY"] ?? _cfg["Jwt:Key"]
+            ?? throw new InvalidOperationException("JWT key not configured");
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyStr));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]
