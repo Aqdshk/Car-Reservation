@@ -58,8 +58,7 @@ export default function ManageBookings() {
                 </td>
                 <td>{r.bookerName}{r.department && <div className="mono" style={{fontSize:11}}>{r.department}</div>}</td>
                 <td>
-                  {r.bookerPhone && <div className="mono" style={{fontSize:12}}>{r.bookerPhone}</div>}
-                  {r.bookerEmail && <div className="mono" style={{fontSize:11,color:'var(--muted)'}}>{r.bookerEmail}</div>}
+                  {r.bookerPhone ? <div className="mono" style={{fontSize:12}}>{r.bookerPhone}</div> : <span style={{color:'var(--muted)'}}>—</span>}
                 </td>
                 <td>{r.vehicleName}</td>
                 <td><span className="mono">{fmt(r.startTime)}</span></td>
@@ -108,8 +107,8 @@ export default function ManageBookings() {
               <div><div className="info-label">VEHICLE</div><div>{detail.vehicleName} · <span className="mono">{detail.vehiclePlate}</span></div></div>
               <div><div className="info-label">DESTINATION</div><div>{detail.destination}</div></div>
               <div><div className="info-label">PERIOD</div><div className="mono" style={{fontSize:12}}>{fmtFull(detail.startTime)}<br/>→ {fmtFull(detail.endTime)}</div></div>
-              <div><div className="info-label">PASSENGERS</div><div>{detail.passengers}</div></div>
-              <div><div className="info-label">CONTACT</div><div className="mono" style={{fontSize:12}}>{detail.bookerPhone || '-'}<br/>{detail.bookerEmail || '-'}</div></div>
+              <div><div className="info-label">PASSENGERS</div><div>{detail.passengers}{detail.passengerNames && <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>{detail.passengerNames}</div>}</div></div>
+              <div><div className="info-label">PHONE</div><div className="mono" style={{fontSize:12}}>{detail.bookerPhone || '-'}</div></div>
               <div><div className="info-label">EXTRAS</div><div>
                 {detail.needTngCard && <span className="badge badge-approved" style={{marginRight:6}}>TnG</span>}
                 {detail.needFuelCard && <span className="badge badge-approved">Fuel</span>}

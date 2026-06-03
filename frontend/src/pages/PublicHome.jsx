@@ -22,9 +22,9 @@ export default function PublicHome() {
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    bookerName: '', bookerEmail: '', bookerPhone: '', department: '',
+    bookerName: '', bookerPhone: '', department: '',
     destination: '', startTime: '', endTime: '',
-    passengers: 1, distanceKm: 0,
+    passengers: 1, passengerList: [''],
     needTngCard: false, needFuelCard: false, notes: ''
   });
 
@@ -36,7 +36,7 @@ export default function PublicHome() {
   const openBooking = async (v) => {
     setSelected(v);
     setSubmitted(false); setErr('');
-    setForm(f => ({ ...f, destination:'', startTime:'', endTime:'', notes:'', needTngCard:false, needFuelCard:false }));
+    setForm(f => ({ ...f, destination:'', startTime:'', endTime:'', notes:'', needTngCard:false, needFuelCard:false, passengers:1, passengerList:[''] }));
     try {
       const { data } = await api.get(`/reservations/busy/${v.id}`);
       setBusy(data);
@@ -47,11 +47,30 @@ export default function PublicHome() {
 
   const set = (k) => (e) => setForm(f => ({...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value}));
 
+  const setPassengerCount = (n) => {
+    n = Math.max(1, Math.min(100, Number(n) || 1));
+    setForm(f => {
+      const list = [...f.passengerList];
+      while (list.length < n) list.push('');
+      list.length = n;
+      return { ...f, passengers: n, passengerList: list };
+    });
+  };
+  const setPassengerName = (i, val) => setForm(f => {
+    const list = [...f.passengerList];
+    list[i] = val;
+    return { ...f, passengerList: list };
+  });
+
   const submit = async (e) => {
     e.preventDefault();
     setErr(''); setLoading(true);
     try {
-      const { data } = await api.post('/reservations', { ...form, vehicleId: selected.id });
+      const passengerNames = form.passengerList.filter(n => n.trim()).join(', ');
+      const payload = { ...form, vehicleId: selected.id, passengerNames, distanceKm: 0 };
+      delete payload.passengerList;
+      delete payload.bookerEmail;
+      const { data } = await api.post('/reservations', payload);
       setSubmittedData(data);
       setSubmitted(true);
     } catch (e) {
@@ -192,10 +211,6 @@ export default function PublicHome() {
                     <input value={form.department} onChange={set('department')} placeholder="e.g. Sales, IT"/>
                   </div>
                   <div className="form-group">
-                    <label>EMAIL</label>
-                    <input type="email" value={form.bookerEmail} onChange={set('bookerEmail')} placeholder="you@c-zero.my"/>
-                  </div>
-                  <div className="form-group">
                     <label>PHONE</label>
                     <input value={form.bookerPhone} onChange={set('bookerPhone')} placeholder="012-3456789"/>
                   </div>
@@ -208,8 +223,8 @@ export default function PublicHome() {
                     <input value={form.destination} onChange={set('destination')} placeholder="e.g. KL Sentral" required/>
                   </div>
                   <div className="form-group">
-                    <label>PASSENGERS</label>
-                    <input type="number" min="1" value={form.passengers} onChange={set('passengers')} required/>
+                    <label>NUMBER OF PASSENGERS *</label>
+                    <input type="number" min="1" max="100" value={form.passengers} onChange={(e) => setPassengerCount(e.target.value)} required/>
                   </div>
                   <div className="form-group">
                     <label>START *</label>
@@ -219,10 +234,16 @@ export default function PublicHome() {
                     <label>END *</label>
                     <input type="datetime-local" value={form.endTime} onChange={set('endTime')} required/>
                   </div>
-                  <div className="form-group">
-                    <label>DISTANCE (KM)</label>
-                    <input type="number" min="0" value={form.distanceKm} onChange={set('distanceKm')}/>
-                  </div>
+                </div>
+
+                <h3 style={{margin:'24px 0 16px'}}>Passenger names</h3>
+                <div className="form-grid">
+                  {form.passengerList.map((name, i) => (
+                    <div className="form-group" key={i}>
+                      <label>PASSENGER {i + 1}</label>
+                      <input value={name} onChange={(e) => setPassengerName(i, e.target.value)} placeholder={`Name of passenger ${i + 1}`}/>
+                    </div>
+                  ))}
                 </div>
 
                 <h3 style={{margin:'24px 0 16px'}}>Extras</h3>

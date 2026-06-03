@@ -27,7 +27,8 @@ public class ReservationsController : ControllerBase
         r.Id, r.TrackingCode,
         r.BookerName, r.BookerEmail, r.BookerPhone, r.Department,
         r.VehicleId, r.Vehicle?.PlateNumber ?? "", $"{r.Vehicle?.Make} {r.Vehicle?.Model}".Trim(),
-        r.StartTime, r.EndTime, r.Destination, r.Passengers, r.DistanceKm,
+        r.StartTime, r.EndTime, r.Destination,
+        r.Passengers, r.PassengerNames, r.DistanceKm,
         r.NeedTngCard, r.NeedFuelCard,
         r.Notes, r.Status, r.CreatedAt,
         r.StartMileage, r.EndMileage, r.StartMileagePhoto, r.EndMileagePhoto,
@@ -96,6 +97,7 @@ public class ReservationsController : ControllerBase
                 VehicleId = dto.VehicleId,
                 StartTime = dto.StartTime, EndTime = dto.EndTime,
                 Destination = dto.Destination, Passengers = dto.Passengers,
+                PassengerNames = dto.PassengerNames,
                 DistanceKm = dto.DistanceKm,
                 NeedTngCard = dto.NeedTngCard, NeedFuelCard = dto.NeedFuelCard,
                 Notes = dto.Notes, Status = ReservationStatus.Pending

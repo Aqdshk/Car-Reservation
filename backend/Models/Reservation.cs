@@ -19,6 +19,7 @@ public class Reservation
     [Required] public DateTime EndTime { get; set; }
     [Required, MaxLength(255)] public string Destination { get; set; } = "";
     public int Passengers { get; set; } = 1;
+    [MaxLength(500)] public string? PassengerNames { get; set; }
     public int DistanceKm { get; set; }
     public bool NeedTngCard { get; set; }
     public bool NeedFuelCard { get; set; }

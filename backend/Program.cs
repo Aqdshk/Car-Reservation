@@ -27,7 +27,7 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
     throw new InvalidOperationException("JWT key must be at least 32 bytes (256 bits).");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseMySql(connStr, ServerVersion.AutoDetect(connStr)));
+    opt.UseMySql(connStr, new MySqlServerVersion(new Version(11, 0, 0))));
 
 builder.Services.AddSingleton<JwtService>();
 
@@ -98,7 +98,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     try
     {
-        db.Database.EnsureCreated();
+        db.Database.Migrate();
         if (!db.Users.Any())
         {
             var seedPassword = cfg["SEED_ADMIN_PASSWORD"]

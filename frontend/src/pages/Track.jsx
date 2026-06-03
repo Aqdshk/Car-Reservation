@@ -103,7 +103,7 @@ export default function Track() {
                 <div><div className="info-label">TRACKING CODE</div><div className="mono" style={{fontSize:16,fontWeight:700,color:'var(--accent)'}}>{booking.trackingCode}</div></div>
                 <div><div className="info-label">DESTINATION</div><div>{booking.destination}</div></div>
                 <div><div className="info-label">PERIOD</div><div className="mono" style={{fontSize:12}}>{fmtDT(booking.startTime)}<br/>→ {fmtDT(booking.endTime)}</div></div>
-                <div><div className="info-label">PASSENGERS</div><div>{booking.passengers}</div></div>
+                <div><div className="info-label">PASSENGERS</div><div>{booking.passengers}{booking.passengerNames && <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>{booking.passengerNames}</div>}</div></div>
                 <div><div className="info-label">EXTRAS</div><div>
                   {booking.needTngCard && <span className="badge badge-approved" style={{marginRight:6}}>TnG</span>}
                   {booking.needFuelCard && <span className="badge badge-approved">Fuel</span>}
