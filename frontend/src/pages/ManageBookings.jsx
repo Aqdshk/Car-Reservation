@@ -19,10 +19,11 @@ function Detail({ r, onClose, onDelete }) {
         <div className="fact"><div className="k">Vehicle</div><div className="v"><Plate>{r.vehiclePlate}</Plate></div></div>
         <div className="fact"><div className="k">When</div><div className="v">{fmtRange(r.startTime, r.endTime)}</div></div>
         <div className="fact"><div className="k">Destination</div><div className="v">{r.destination}</div></div>
-        <div className="fact"><div className="k">Phone</div><div className="v">{r.bookerPhone ? <a href={`tel:${r.bookerPhone}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>{r.bookerPhone}</a> : <span className="muted">Not given</span>}</div></div>
-        <div className="fact"><div className="k">Department</div><div className="v">{r.department || <span className="muted">—</span>}</div></div>
-        <div className="fact"><div className="k">People</div><div className="v">{r.passengers}{r.passengerNames && <div className="muted" style={{ fontSize: 13.5 }}>{r.passengerNames}</div>}</div></div>
-        <div className="fact"><div className="k">Cards</div><div className="v">
+        {/* Older bookings may carry these; the form no longer asks for them. */}
+        {r.bookerPhone && <div className="fact"><div className="k">Phone</div><div className="v"><a href={`tel:${r.bookerPhone}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>{r.bookerPhone}</a></div></div>}
+        {r.department && <div className="fact"><div className="k">Department</div><div className="v">{r.department}</div></div>}
+        {r.passengers > 1 && <div className="fact"><div className="k">People</div><div className="v">{r.passengers}{r.passengerNames && <div className="muted" style={{ fontSize: 13.5 }}>{r.passengerNames}</div>}</div></div>}
+        <div className="fact"><div className="k">Cards taken</div><div className="v">
           {r.needTngCard || r.needFuelCard
             ? <span style={{ display: 'flex', gap: 6 }}>{r.needTngCard && <span className="tag">Touch 'n Go</span>}{r.needFuelCard && <span className="tag">Fuel</span>}</span>
             : <span className="muted">None</span>}
@@ -101,7 +102,7 @@ export default function ManageBookings() {
         </div>
         {loading ? <div className="empty">Loading…</div> : rows.length === 0 ? <div className="empty">{items.length ? 'Nothing matches.' : 'No bookings yet.'}</div> : (
           <table className="tbl tbl-stack">
-            <thead><tr><th>Driver</th><th>Vehicle</th><th>When</th><th>Destination</th><th>Odometer</th><th>Status</th></tr></thead>
+            <thead><tr><th>Driver</th><th>Vehicle</th><th>When</th><th>Destination</th><th>Cards</th><th>Odometer</th><th>Status</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.id} className="click" onClick={() => setDetail(r)}>
@@ -112,6 +113,9 @@ export default function ManageBookings() {
                   <td data-label="Vehicle"><Plate>{r.vehiclePlate}</Plate></td>
                   <td data-label="When" className="num">{fmtRange(r.startTime, r.endTime)}</td>
                   <td data-label="Destination">{r.destination}</td>
+                  <td data-label="Cards">{r.needTngCard || r.needFuelCard
+                    ? <span style={{ display: 'inline-flex', gap: 4 }}>{r.needTngCard && <span className="tag">TnG</span>}{r.needFuelCard && <span className="tag">Fuel</span>}</span>
+                    : <span className="muted">—</span>}</td>
                   <td data-label="Odometer" className="num">
                     {r.checkedOutAt ? <b>{(r.endMileage - r.startMileage).toLocaleString()} km</b>
                       : r.checkedInAt ? <span>{r.startMileage?.toLocaleString()} km out</span>

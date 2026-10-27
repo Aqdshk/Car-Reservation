@@ -148,7 +148,7 @@ export default function Track() {
           <div className="fact"><div className="k"><Icon name="clock" size={14}/>When</div><div className="v">{fmtRange(b.startTime, b.endTime)}</div></div>
           <div className="fact"><div className="k"><Icon name="pin" size={14}/>Destination</div><div className="v">{b.destination}</div></div>
           <div className="fact"><div className="k"><Icon name="users" size={14}/>Driver</div><div className="v">{b.bookerName}{b.passengers > 1 && <span className="muted"> + {b.passengers - 1}</span>}</div></div>
-          <div className="fact"><div className="k"><Icon name="card" size={14}/>Cards</div><div className="v">
+          <div className="fact"><div className="k"><Icon name="card" size={14}/>Cards taken</div><div className="v">
             {b.needTngCard || b.needFuelCard
               ? <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{b.needTngCard && <span className="tag">Touch 'n Go</span>}{b.needFuelCard && <span className="tag">Fuel</span>}</span>
               : <span className="muted">None</span>}

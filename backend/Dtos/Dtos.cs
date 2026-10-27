@@ -39,7 +39,7 @@ public record CreateReservationDto(
     [Required] DateTime StartTime,
     [Required] DateTime EndTime,
     [Required, MaxLength(255)] string Destination,
-    [Range(1, 100)] int Passengers,
+    [Range(0, 100)] int Passengers,
     [MaxLength(500)] string? PassengerNames,
     [Range(0, 10000)] int DistanceKm,
     bool NeedTngCard,

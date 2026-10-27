@@ -68,29 +68,10 @@ public class ReservationsController : ControllerBase
         await _bookingLock.WaitAsync();
         try
         {
-            var conflict = await _db.Reservations.AnyAsync(r =>
-                r.VehicleId == dto.VehicleId && r.Status == ReservationStatus.Approved &&
-                r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
-            if (conflict)
-                return BadRequest(new { message = "Vehicle already booked during this time slot" });
-
-            var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
-            if (dto.NeedTngCard)
-            {
-                var tngInUse = await _db.Reservations.CountAsync(r =>
-                    r.Status == ReservationStatus.Approved && r.NeedTngCard && r.CheckedOutAt == null &&
-                    r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
-                if (tngInUse >= settings.TotalTngCards)
-                    return BadRequest(new { message = "No TnG card available for this period" });
-            }
-            if (dto.NeedFuelCard)
-            {
-                var fuelInUse = await _db.Reservations.CountAsync(r =>
-                    r.Status == ReservationStatus.Approved && r.NeedFuelCard && r.CheckedOutAt == null &&
-                    r.StartTime < dto.EndTime && r.EndTime > dto.StartTime);
-                if (fuelInUse >= settings.TotalFuelCards)
-                    return BadRequest(new { message = "No Fuel card available for this period" });
-            }
+            // No overlap or card-stock checks, by design: whoever needs the car books
+            // it, and the cards are just a note of what they took.
+            if (!await _db.Vehicles.AnyAsync(v => v.Id == dto.VehicleId))
+                return BadRequest(new { message = "Vehicle not found" });
 
             string code;
             do { code = GenerateCode(); }
@@ -103,7 +84,7 @@ public class ReservationsController : ControllerBase
                 BookerEmail = dto.BookerEmail, BookerPhone = dto.BookerPhone, Department = dto.Department,
                 VehicleId = dto.VehicleId,
                 StartTime = dto.StartTime, EndTime = dto.EndTime,
-                Destination = dto.Destination, Passengers = dto.Passengers,
+                Destination = dto.Destination.Trim(), Passengers = Math.Max(1, dto.Passengers),
                 PassengerNames = dto.PassengerNames,
                 DistanceKm = dto.DistanceKm,
                 NeedTngCard = dto.NeedTngCard, NeedFuelCard = dto.NeedFuelCard,

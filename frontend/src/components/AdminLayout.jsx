@@ -11,7 +11,6 @@ const LINKS = [
   { to: '/admin/calendar', icon: 'calendar', label: 'Calendar' },
   { to: '/admin/vehicles', icon: 'car', label: 'Vehicles' },
   { to: '/admin/reports', icon: 'chart', label: 'Reports' },
-  { to: '/admin/settings', icon: 'card', label: 'Cards' },
 ];
 
 function Links() {
