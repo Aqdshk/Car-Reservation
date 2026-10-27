@@ -13,15 +13,6 @@ export default function ManageBookings() {
   const load = () => api.get('/reservations', { params: { pageSize: 500 } }).then(r => setItems(r.data.items));
   useEffect(() => { load(); }, []);
 
-  const act = async (id, status) => {
-    await api.patch(`/reservations/${id}/status`, { status });
-    load();
-    if (detail?.id === id) {
-      const updated = (await api.get('/reservations', { params: { pageSize: 500 } })).data.items.find(b => b.id === id);
-      setDetail(updated);
-    }
-  };
-
   const del = async (id) => {
     if (!confirm('Delete this booking permanently?')) return;
     await api.delete(`/reservations/${id}`);
@@ -29,7 +20,12 @@ export default function ManageBookings() {
     load();
   };
 
-  const filtered = filter === 'All' ? items : items.filter(i => i.status === filter);
+  const filtered = items.filter(i => {
+    if (filter === 'All') return true;
+    if (filter === 'Done') return !!i.checkedOutAt;
+    if (filter === 'Active') return !i.checkedOutAt;
+    return true;
+  });
 
   return (
     <>
@@ -44,7 +40,7 @@ export default function ManageBookings() {
           <h3>Booking Queue</h3>
           <select value={filter} onChange={(e) => setFilter(e.target.value)}
             style={{padding:'7px 12px',border:'1px solid var(--border)',borderRadius:6,background:'var(--bg-2)',color:'var(--text)',fontSize:12}}>
-            <option>All</option><option>Pending</option><option>Approved</option><option>Rejected</option>
+            <option>All</option><option value="Active">Upcoming / In use</option><option value="Done">Completed</option>
           </select>
         </div>
         <table>
@@ -73,16 +69,13 @@ export default function ManageBookings() {
                   {r.checkedOutAt ? <div style={{color:'var(--accent)'}}>Out: {r.endMileage?.toLocaleString()}km</div> : null}
                   {r.checkedInAt && r.checkedOutAt && <div style={{color:'var(--accent)',fontWeight:700}}>Δ {(r.endMileage - r.startMileage).toLocaleString()}km</div>}
                 </td>
-                <td><span className={badge(r.status)}>{r.status}</span></td>
+                <td>
+                  {r.checkedOutAt ? <span className="badge badge-approved">Done</span>
+                    : r.checkedInAt ? <span className="badge badge-inuse">In use</span>
+                    : <span className="badge badge-approved">Booked</span>}
+                </td>
                 <td onClick={(e) => e.stopPropagation()}>
-                  {r.status === 'Pending' ? (
-                    <>
-                      <button className="btn btn-sm" onClick={() => act(r.id, 'Approved')}>✓</button>{' '}
-                      <button className="btn btn-sm btn-ghost" onClick={() => act(r.id, 'Rejected')}>✕</button>
-                    </>
-                  ) : (
-                    <button className="btn btn-sm btn-ghost" onClick={() => del(r.id)}>🗑</button>
-                  )}
+                  <button className="btn btn-sm btn-ghost" onClick={() => del(r.id)}>🗑</button>
                 </td>
               </tr>
             ))}
@@ -103,7 +96,11 @@ export default function ManageBookings() {
 
             <div className="info-grid" style={{marginBottom:18}}>
               <div><div className="info-label">TRACKING CODE</div><div className="mono" style={{fontSize:18,fontWeight:700,color:'var(--accent)',letterSpacing:2}}>{detail.trackingCode}</div></div>
-              <div><div className="info-label">STATUS</div><span className={badge(detail.status)}>{detail.status}</span></div>
+              <div><div className="info-label">STATUS</div>
+                {detail.checkedOutAt ? <span className="badge badge-approved">Done</span>
+                  : detail.checkedInAt ? <span className="badge badge-inuse">In use</span>
+                  : <span className="badge badge-approved">Booked</span>}
+              </div>
               <div><div className="info-label">VEHICLE</div><div>{detail.vehicleName} · <span className="mono">{detail.vehiclePlate}</span></div></div>
               <div><div className="info-label">DESTINATION</div><div>{detail.destination}</div></div>
               <div><div className="info-label">PERIOD</div><div className="mono" style={{fontSize:12}}>{fmtFull(detail.startTime)}<br/>→ {fmtFull(detail.endTime)}</div></div>
@@ -149,15 +146,7 @@ export default function ManageBookings() {
             )}
 
             <div className="form-actions" style={{marginTop:24}}>
-              {detail.status === 'Pending' && (
-                <>
-                  <button className="btn btn-ghost" onClick={() => act(detail.id, 'Rejected')}>Reject</button>
-                  <button className="btn" onClick={() => act(detail.id, 'Approved')}>Approve →</button>
-                </>
-              )}
-              {detail.status !== 'Pending' && (
-                <button className="btn btn-danger" onClick={() => del(detail.id)}>Delete booking</button>
-              )}
+              <button className="btn btn-danger" onClick={() => del(detail.id)}>Delete booking</button>
             </div>
           </div>
         </div>

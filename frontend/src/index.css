@@ -97,13 +97,16 @@ a{color:inherit;text-decoration:none}
   font-family:'Inter',sans-serif;transition:.2s;letter-spacing:-.2px;
 }
 .btn:hover{box-shadow:0 0 25px var(--accent-glow);transform:translateY(-1px)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn{box-shadow:0 1px 2px rgba(0,0,0,.1),0 0 0 1px rgba(255,255,255,.04) inset}
+.btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px var(--accent-glow),0 0 0 1px rgba(255,255,255,.08) inset}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .btn-full{width:100%;padding:12px}
 .btn-sm{padding:6px 12px;font-size:12px}
-.btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
-.btn-ghost:hover{border-color:#3a3a48;box-shadow:none;background:var(--surface-2)}
-.btn-danger{background:var(--red);color:#fff}
-.btn-danger:hover{box-shadow:0 0 25px rgba(248,113,113,.3)}
+.btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);box-shadow:none}
+.btn-ghost:hover{border-color:var(--accent);background:var(--surface-2);box-shadow:none;color:var(--accent)}
+.btn-danger{background:var(--red);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.btn-danger:hover{box-shadow:0 4px 20px rgba(248,113,113,.3)}
 
 /* LAYOUT */
 .layout{display:flex;min-height:100vh}
@@ -126,8 +129,8 @@ a{color:inherit;text-decoration:none}
 .nav-item .ico{font-size:14px;width:16px;text-align:center}
 
 .main{flex:1;padding:28px 32px;overflow-x:auto}
-.page-head{margin-bottom:28px}
-.page-title{font-size:26px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
+.page-head{margin-bottom:32px}
+.page-title{font-size:32px;font-weight:700;letter-spacing:-.8px;margin-bottom:6px;background:linear-gradient(180deg,var(--text) 0%,color-mix(in srgb,var(--text) 75%,transparent) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .page-sub{color:var(--muted);font-size:14px}
 .breadcrumb{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}
 .breadcrumb .accent{color:var(--accent)}
@@ -171,15 +174,35 @@ td .mono{color:var(--muted);font-size:12px}
 .form-actions{display:flex;gap:10px;margin-top:24px;justify-content:flex-end;padding-top:20px;border-top:1px solid var(--border)}
 
 /* VEHICLE CARDS */
-.vehicle-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-.vehicle-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;transition:.2s;position:relative;overflow:hidden}
-.vehicle-card:hover{border-color:var(--accent);transform:translateY(-2px)}
-.vehicle-card .row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
-.vehicle-card .plate{font-family:'JetBrains Mono',monospace;background:var(--bg-2);border:1px solid var(--border);padding:4px 10px;border-radius:6px;font-size:11px;color:var(--accent);font-weight:600;letter-spacing:1px}
-.vehicle-card .car-emoji{font-size:42px;line-height:1;margin-bottom:14px}
-.vehicle-card h4{font-size:17px;font-weight:600;margin-bottom:4px;letter-spacing:-.3px}
-.vehicle-card .meta{font-size:12px;color:var(--muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;text-transform:uppercase}
-.vehicle-card .actions{display:flex;gap:6px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.vehicle-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.vehicle-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;padding:22px;transition:all .25s cubic-bezier(.4,0,.2,1);
+  position:relative;overflow:hidden;
+}
+.vehicle-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  opacity:0;transition:opacity .3s;
+}
+.vehicle-card:hover{
+  border-color:var(--accent);
+  transform:translateY(-4px);
+  box-shadow:0 20px 40px -12px rgba(0,0,0,.35),0 0 0 1px var(--accent-glow);
+}
+.vehicle-card:hover::before{opacity:1}
+.vehicle-card .row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.vehicle-card .plate{
+  font-family:'JetBrains Mono',monospace;
+  background:var(--bg-2);border:1px solid var(--border);
+  padding:5px 11px;border-radius:7px;font-size:11px;
+  color:var(--accent);font-weight:700;letter-spacing:1.5px;
+}
+.vehicle-card .car-emoji{font-size:56px;line-height:1;margin-bottom:16px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.25))}
+.vehicle-card h4{font-size:19px;font-weight:700;margin-bottom:4px;letter-spacing:-.4px}
+.vehicle-card .meta{font-size:11px;color:var(--muted);margin-bottom:14px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.8px}
+.vehicle-card .actions{display:flex;gap:6px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}
 
 /* BOOKING LAYOUT */
 .booking-layout{display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:flex-start}
@@ -360,3 +383,28 @@ input[type="file"]::file-selector-button{
   .sidebar{width:64px}
   .brand span:not(.logo-mini),.nav-item span,.section-label{display:none}
 }
+
+/* QR MODAL */
+.qr-wrap-modal{
+  display:flex;justify-content:center;padding:28px;
+  background:#fff;border-radius:14px;border:2px solid var(--border);
+  margin:8px 0 16px;
+}
+.qr-wrap-modal svg{display:block;max-width:100%;height:auto}
+.qr-url{
+  text-align:center;font-size:11px;color:var(--muted);
+  word-break:break-all;padding:8px 12px;background:var(--bg-2);
+  border-radius:6px;letter-spacing:.3px;
+}
+
+/* public header refined */
+.public-header{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.public-title{font-size:17px;font-weight:700;letter-spacing:-.4px}
+.vehicle-card.clickable:active{transform:translateY(-2px) scale(.99)}
+
+/* card lift */
+.card{box-shadow:0 1px 3px rgba(0,0,0,.08),0 0 0 1px rgba(255,255,255,.02) inset}
+
+/* stat card refined */
+.stat-card{transition:all .2s;border-radius:14px}
+.stat-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 10px 30px -10px var(--accent-glow)}

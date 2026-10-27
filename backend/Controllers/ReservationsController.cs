@@ -100,7 +100,7 @@ public class ReservationsController : ControllerBase
                 PassengerNames = dto.PassengerNames,
                 DistanceKm = dto.DistanceKm,
                 NeedTngCard = dto.NeedTngCard, NeedFuelCard = dto.NeedFuelCard,
-                Notes = dto.Notes, Status = ReservationStatus.Pending
+                Notes = dto.Notes, Status = ReservationStatus.Approved
             };
             _db.Reservations.Add(r);
             await _db.SaveChangesAsync();

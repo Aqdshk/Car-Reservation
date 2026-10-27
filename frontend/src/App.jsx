@@ -25,6 +25,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<PublicHome />} />
+          <Route path="/book/:vehicleId" element={<PublicHome />} />
           <Route path="/track/:code" element={<Track />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminProtected><AdminDashboard /></AdminProtected>} />

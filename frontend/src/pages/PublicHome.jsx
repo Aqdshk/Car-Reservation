@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import api from '../api';
 import MiniCalendar from '../components/MiniCalendar';
 import ThemeToggle from '../components/ThemeToggle';
@@ -12,6 +12,7 @@ const fmtRange = (s, e) => {
 };
 
 export default function PublicHome() {
+  const { vehicleId } = useParams();
   const [vehicles, setVehicles] = useState([]);
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState([]);
@@ -29,9 +30,16 @@ export default function PublicHome() {
   });
 
   useEffect(() => {
-    api.get('/vehicles').then(r => setVehicles(r.data));
+    api.get('/vehicles').then(r => {
+      setVehicles(r.data);
+      if (vehicleId) {
+        const v = r.data.find(x => String(x.id) === String(vehicleId));
+        if (v) openBooking(v);
+      }
+    });
     api.get('/settings/cards').then(r => setCardStatus(r.data)).catch(() => {});
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleId]);
 
   const openBooking = async (v) => {
     setSelected(v);
