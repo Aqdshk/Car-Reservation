@@ -11,7 +11,7 @@ namespace CarBooking.Api.Controllers;
 [Route("api/[controller]")]
 public class ReservationsController : ControllerBase
 {
-    // Serializes booking-create and approve flows on this single-instance deployment so the
+    // Serializes booking creation on this single-instance deployment so the
     // capacity checks (vehicle slot, TnG/Fuel cards) cannot be raced by concurrent requests.
     private static readonly SemaphoreSlim _bookingLock = new(1, 1);
 
@@ -30,9 +30,16 @@ public class ReservationsController : ControllerBase
         r.StartTime, r.EndTime, r.Destination,
         r.Passengers, r.PassengerNames, r.DistanceKm,
         r.NeedTngCard, r.NeedFuelCard,
-        r.Notes, r.Status, r.CreatedAt,
+        r.Notes, r.Status, Utc(r.CreatedAt),
         r.StartMileage, r.EndMileage, r.StartMileagePhoto, r.EndMileagePhoto,
-        r.CheckedInAt, r.CheckedOutAt);
+        Utc(r.CheckedInAt), Utc(r.CheckedOutAt));
+
+    // Start/End are the booker's wall-clock times and go out as typed. CreatedAt and
+    // the check-in/out stamps are written with UtcNow but come back from MariaDB
+    // with Kind=Unspecified, so without this they serialise without a "Z" and the
+    // browser shows them eight hours early.
+    private static DateTime Utc(DateTime d) => DateTime.SpecifyKind(d, DateTimeKind.Utc);
+    private static DateTime? Utc(DateTime? d) => d is null ? null : DateTime.SpecifyKind(d.Value, DateTimeKind.Utc);
 
     private static string GenerateCode()
     {
@@ -115,10 +122,10 @@ public class ReservationsController : ControllerBase
     public async Task<IActionResult> Busy(int vehicleId)
     {
         var list = await _db.Reservations
-            .Where(r => r.VehicleId == vehicleId && (r.Status == ReservationStatus.Approved || r.Status == ReservationStatus.Pending))
+            .Where(r => r.VehicleId == vehicleId && r.Status == ReservationStatus.Approved)
             .Where(r => r.EndTime > DateTime.UtcNow.AddDays(-1))
             .OrderBy(r => r.StartTime)
-            .Select(r => new BusySlotDto(r.Id, r.VehicleId, r.StartTime, r.EndTime, r.Status, r.BookerName))
+            .Select(r => new BusySlotDto(r.Id, r.VehicleId, r.StartTime, r.EndTime, r.Status))
             .ToListAsync();
         return Ok(list);
     }
@@ -226,15 +233,6 @@ public class ReservationsController : ControllerBase
         return Ok(new { total, page, pageSize, items = items.Select(Map) });
     }
 
-    [HttpGet("pending")]
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Pending()
-    {
-        var list = await _db.Reservations.Include(r => r.Vehicle)
-            .Where(r => r.Status == ReservationStatus.Pending).OrderBy(r => r.StartTime).ToListAsync();
-        return Ok(list.Select(Map));
-    }
-
     [HttpGet("calendar")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Calendar()
@@ -243,56 +241,9 @@ public class ReservationsController : ControllerBase
         var to = DateTime.UtcNow.AddDays(90);
         var list = await _db.Reservations.Include(r => r.Vehicle)
             .Where(r => r.StartTime < to && r.EndTime > from)
-            .Where(r => r.Status != ReservationStatus.Rejected)
+            .Where(r => r.Status == ReservationStatus.Approved)
             .OrderBy(r => r.StartTime).ToListAsync();
         return Ok(list.Select(Map));
-    }
-
-    [HttpPatch("{id}/status")]
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> UpdateStatus(int id, UpdateStatusDto dto)
-    {
-        if (!ReservationStatus.IsValid(dto.Status))
-            return BadRequest(new { message = "Invalid status" });
-
-        await _bookingLock.WaitAsync();
-        try
-        {
-            var r = await _db.Reservations.Include(x => x.Vehicle).FirstOrDefaultAsync(x => x.Id == id);
-            if (r is null) return NotFound();
-
-            if (dto.Status == ReservationStatus.Approved)
-            {
-                var conflict = await _db.Reservations.AnyAsync(x =>
-                    x.Id != id && x.VehicleId == r.VehicleId && x.Status == ReservationStatus.Approved &&
-                    x.StartTime < r.EndTime && x.EndTime > r.StartTime);
-                if (conflict)
-                    return BadRequest(new { message = "Cannot approve — time slot conflicts with another approved booking" });
-
-                var settings = await _db.Settings.FirstOrDefaultAsync() ?? new Models.Settings();
-                if (r.NeedTngCard)
-                {
-                    var tngInUse = await _db.Reservations.CountAsync(x =>
-                        x.Id != id && x.Status == ReservationStatus.Approved && x.NeedTngCard && x.CheckedOutAt == null &&
-                        x.StartTime < r.EndTime && x.EndTime > r.StartTime);
-                    if (tngInUse >= settings.TotalTngCards)
-                        return BadRequest(new { message = "Cannot approve — no TnG card available for this period" });
-                }
-                if (r.NeedFuelCard)
-                {
-                    var fuelInUse = await _db.Reservations.CountAsync(x =>
-                        x.Id != id && x.Status == ReservationStatus.Approved && x.NeedFuelCard && x.CheckedOutAt == null &&
-                        x.StartTime < r.EndTime && x.EndTime > r.StartTime);
-                    if (fuelInUse >= settings.TotalFuelCards)
-                        return BadRequest(new { message = "Cannot approve — no Fuel card available for this period" });
-                }
-            }
-
-            r.Status = dto.Status;
-            await _db.SaveChangesAsync();
-            return Ok(Map(r));
-        }
-        finally { _bookingLock.Release(); }
     }
 
     [HttpDelete("{id}")]

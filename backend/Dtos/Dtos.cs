@@ -46,8 +46,7 @@ public record CreateReservationDto(
     bool NeedFuelCard,
     [MaxLength(1000)] string? Notes);
 
-public record UpdateStatusDto([Required, MaxLength(20)] string Status);
-public record BusySlotDto(int Id, int VehicleId, DateTime StartTime, DateTime EndTime, string Status, string BookerName);
+public record BusySlotDto(int Id, int VehicleId, DateTime StartTime, DateTime EndTime, string Status);
 
 public record CardStatusDto(int TotalTng, int InUseTng, int AvailableTng, int TotalFuel, int InUseFuel, int AvailableFuel);
 public record UpdateCardSettingsDto(
