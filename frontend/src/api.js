@@ -13,10 +13,12 @@ api.interceptors.request.use((cfg) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    // An expired admin session sends the admin back to sign in. Public pages
+    // never need a token, so they are left alone.
+    if (err.response?.status === 401 && location.pathname.startsWith('/admin') && location.pathname !== '/admin/login') {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      if (location.pathname !== '/login') location.href = '/login';
+      location.href = '/admin/login';
     }
     return Promise.reject(err);
   }

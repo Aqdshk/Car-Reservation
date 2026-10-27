@@ -1,35 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Icon } from '../lib/ui';
 
-const KEY = 'theme';
+// Light by default: most bookings happen on a phone in a car park.
+// Only an explicit toggle is remembered. (The old key "theme" was written on
+// every load, so it is ignored rather than trusted.)
+const KEY = 'cz-theme';
 
 export function getInitialTheme() {
-  if (typeof window === 'undefined') return 'dark';
-  const saved = localStorage.getItem(KEY);
-  if (saved === 'light' || saved === 'dark') return saved;
-  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch { /* storage blocked */ }
+  return 'light';
 }
 
 export function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem(KEY, theme);
 }
 
-export default function ThemeToggle({ className = '' }) {
+export default function ThemeToggle() {
   const [theme, setTheme] = useState(() => getInitialTheme());
 
-  useEffect(() => { applyTheme(theme); }, [theme]);
-
-  const toggle = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+  const toggle = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    applyTheme(next);
+    try { localStorage.setItem(KEY, next); } catch { /* storage blocked */ }
+  };
 
   return (
-    <button
-      type="button"
-      className={`theme-toggle ${className}`}
-      onClick={toggle}
-      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-      aria-label="Toggle theme"
-    >
-      {theme === 'dark' ? '☀' : '☾'}
+    <button type="button" className="icon-btn" onClick={toggle}
+      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
+      <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17}/>
     </button>
   );
 }

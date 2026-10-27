@@ -1,135 +1,94 @@
-import { useEffect, useMemo, useState } from 'react';
-import api from '../api';
+import { useMemo, useState } from 'react';
+import { Icon } from '../lib/ui';
 
-const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const dayHeaders = ['M','T','W','T','F','S','S'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Mo','Tu','We','Th','Fr','Sa','Su'];
 
-const startOfDay = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
-const sameDay = (a, b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const sameDay = (a, b) => a && b && startOfDay(a).getTime() === startOfDay(b).getTime();
 
-export default function MiniCalendar({ vehicleId, onRangeSelect, selectedStart, selectedEnd }) {
-  const [busy, setBusy] = useState([]);
-  const [cursor, setCursor] = useState(new Date());
+// Availability for one vehicle. Booked days are struck through; tapping a free
+// day picks the start, a second tap picks the end.
+export default function MiniCalendar({ busy = [], onRangeSelect, selectedStart, selectedEnd }) {
+  const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [pickStart, setPickStart] = useState(null);
-  const [hover, setHover] = useState(null);
-
-  useEffect(() => {
-    if (!vehicleId) return;
-    api.get(`/reservations/busy/${vehicleId}`).then(r => setBusy(r.data));
-    setPickStart(null); setHover(null);
-  }, [vehicleId]);
-
-  // Sync local picking when parent clears
-  useEffect(() => {
-    if (!selectedStart && !selectedEnd) setPickStart(null);
-  }, [selectedStart, selectedEnd]);
 
   const cells = useMemo(() => {
-    const year = cursor.getFullYear();
-    const month = cursor.getMonth();
-    const first = new Date(year, month, 1);
-    const last = new Date(year, month + 1, 0);
-    const firstWeekday = (first.getDay() + 6) % 7;
-    const totalCells = Math.ceil((firstWeekday + last.getDate()) / 7) * 7;
-    return Array.from({length: totalCells}, (_, i) => {
-      const dayNum = i - firstWeekday + 1;
-      const date = new Date(year, month, dayNum);
-      return { date, inMonth: date.getMonth() === month, key: i };
+    const y = cursor.getFullYear(), m = cursor.getMonth();
+    const first = new Date(y, m, 1);
+    const lead = (first.getDay() + 6) % 7;
+    const days = new Date(y, m + 1, 0).getDate();
+    const total = Math.ceil((lead + days) / 7) * 7;
+    return Array.from({ length: total }, (_, i) => {
+      const date = new Date(y, m, i - lead + 1);
+      return { date, inMonth: date.getMonth() === m, key: i };
     });
   }, [cursor]);
 
-  const statusOnDay = (date) => {
-    const ds = startOfDay(date);
-    const matched = busy.filter(b => {
-      const s = startOfDay(new Date(b.startTime));
-      const e = startOfDay(new Date(b.endTime));
-      return ds >= s && ds <= e;
-    });
-    if (matched.some(m => m.status === 'Approved')) return 'approved';
-    if (matched.some(m => m.status === 'Pending')) return 'pending';
-    return null;
+  const isBooked = (date) => {
+    const d = startOfDay(date);
+    return busy.some(b => d >= startOfDay(b.startTime) && d <= startOfDay(b.endTime));
   };
-
   const isPast = (date) => startOfDay(date) < startOfDay(new Date());
 
-  const inRange = (date, a, b) => {
-    if (!a || !b) return false;
-    const d = startOfDay(date).getTime();
-    const lo = Math.min(startOfDay(a).getTime(), startOfDay(b).getTime());
-    const hi = Math.max(startOfDay(a).getTime(), startOfDay(b).getTime());
-    return d >= lo && d <= hi;
-  };
+  const start = pickStart || selectedStart;
+  const end = pickStart ? null : selectedEnd;
+  const inRange = (date) => start && end && startOfDay(date) > startOfDay(start) && startOfDay(date) < startOfDay(end);
 
-  const handleClick = (date) => {
-    if (isPast(date) || statusOnDay(date) === 'approved') return;
-
-    if (!pickStart) {
-      // First click — pick start
+  const pick = (date) => {
+    if (!pickStart || startOfDay(date) < startOfDay(pickStart)) {
       setPickStart(date);
       onRangeSelect?.(date, null);
     } else {
-      // Second click — pick end (or reset if before start)
-      if (startOfDay(date) < startOfDay(pickStart)) {
-        // Clicked earlier date — restart from there
-        setPickStart(date);
-        onRangeSelect?.(date, null);
-      } else {
-        onRangeSelect?.(pickStart, date);
-        setPickStart(null);
-      }
+      onRangeSelect?.(pickStart, date);
+      setPickStart(null);
     }
   };
 
-  const prev = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1));
-  const next = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1));
-
-  const today = new Date();
-  const finalStart = pickStart || selectedStart;
-  const finalEnd = pickStart ? (hover || null) : selectedEnd;
+  const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0, 0, 0, 0);
+  const canGoBack = cursor > thisMonth;
 
   return (
-    <div className="mini-cal">
-      <div className="mini-cal-head">
-        <button type="button" className="mini-cal-nav" onClick={prev}>‹</button>
-        <span className="mini-cal-title">{monthNames[cursor.getMonth()]} {cursor.getFullYear()}</span>
-        <button type="button" className="mini-cal-nav" onClick={next}>›</button>
+    <div>
+      <div className="mcal-head">
+        <button type="button" className="icon-btn" disabled={!canGoBack} style={{ opacity: canGoBack ? 1 : .4 }}
+          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} aria-label="Previous month">
+          <Icon name="chevL" size={16}/>
+        </button>
+        <span className="mcal-title">{MONTHS[cursor.getMonth()]} {cursor.getFullYear()}</span>
+        <button type="button" className="icon-btn"
+          onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} aria-label="Next month">
+          <Icon name="chevR" size={16}/>
+        </button>
       </div>
-      <div className="mini-cal-grid mini-cal-headers">
-        {dayHeaders.map((d,i) => <div key={i} className="mini-cal-h">{d}</div>)}
-      </div>
-      <div className="mini-cal-grid">
+      <div className="mcal-grid">
+        {DAYS.map(d => <div key={d} className="mcal-h">{d}</div>)}
         {cells.map(c => {
-          const st = statusOnDay(c.date);
+          const booked = isBooked(c.date);
           const past = isPast(c.date);
-          const blocked = st === 'approved' || past;
-          const isToday = sameDay(c.date, today);
-          const isStart = finalStart && sameDay(c.date, finalStart);
-          const isEnd = finalEnd && sameDay(c.date, finalEnd);
-          const isMid = inRange(c.date, finalStart, finalEnd) && !isStart && !isEnd;
+          const sel = sameDay(c.date, start) || sameDay(c.date, end);
+          const cls = ['mcal-cell',
+            !c.inMonth && 'out',
+            sameDay(c.date, new Date()) && 'today',
+            booked && !past && 'booked',
+            sel && 'sel',
+            !sel && inRange(c.date) && 'mid'].filter(Boolean).join(' ');
           return (
-            <div key={c.key}
-              className={`mini-cal-cell ${c.inMonth?'':'out'} ${isToday?'today':''} ${st?`busy-${st}`:''} ${blocked?'blocked':''} ${isStart?'sel-start':''} ${isEnd?'sel-end':''} ${isMid?'sel-mid':''}`}
-              onClick={() => c.inMonth && handleClick(c.date)}
-              onMouseEnter={() => pickStart && setHover(c.date)}
-              onMouseLeave={() => setHover(null)}
-              title={blocked ? (past ? 'Past date' : 'Already booked') : fmt(c.date)}>
+            <button type="button" key={c.key} className={cls} disabled={!c.inMonth || past || booked}
+              onClick={() => pick(c.date)} title={booked ? 'Already booked' : undefined}>
               {c.date.getDate()}
-            </div>
+            </button>
           );
         })}
       </div>
-      <div className="mini-cal-hint mono">
-        {!finalStart && '› Click a date to start'}
-        {finalStart && !finalEnd && pickStart && '› Click end date'}
-        {finalStart && finalEnd && '✓ Click again to change'}
+      <div className="mcal-legend">
+        <span><i className="sw sw-free"/>Free</span>
+        <span><i className="sw sw-booked"/>Booked</span>
+        <span><i className="sw sw-sel"/>Your trip</span>
       </div>
-      <div className="mini-cal-legend">
-        <span><i className="dot dot-free"></i>Free</span>
-        <span><i className="dot dot-pending"></i>Pending</span>
-        <span><i className="dot dot-approved"></i>Booked</span>
-        <span><i className="dot dot-selected"></i>Selected</span>
-      </div>
+      <p className="mcal-hint">
+        {pickStart ? 'Now tap the return day.' : 'Tap a day to start, then the return day. You can fine-tune the times in the form.'}
+      </p>
     </div>
   );
 }

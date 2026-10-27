@@ -1,126 +1,101 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api';
+import { Icon, Plate, StatusPill, fmtRange, tripState } from '../lib/ui';
 
-const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const dayHeaders = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-
-const sameDay = (a, b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-const startOfDay = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const sameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime();
 
 export default function CalendarPage() {
   const [bookings, setBookings] = useState([]);
-  const [cursor, setCursor] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+  const [selected, setSelected] = useState(() => new Date());
 
-  useEffect(() => {
-    api.get('/reservations/calendar').then(r => setBookings(r.data));
-  }, []);
+  useEffect(() => { api.get('/reservations/calendar').then(r => setBookings(r.data)); }, []);
 
   const cells = useMemo(() => {
-    const year = cursor.getFullYear();
-    const month = cursor.getMonth();
-    const first = new Date(year, month, 1);
-    const last = new Date(year, month + 1, 0);
-    // Monday-start: weekday 0=Mon..6=Sun
-    const firstWeekday = (first.getDay() + 6) % 7;
-    const totalCells = Math.ceil((firstWeekday + last.getDate()) / 7) * 7;
-    return Array.from({length: totalCells}, (_, i) => {
-      const dayNum = i - firstWeekday + 1;
-      const date = new Date(year, month, dayNum);
-      const inMonth = date.getMonth() === month;
-      return { date, inMonth, key: i };
+    const y = cursor.getFullYear(), m = cursor.getMonth();
+    const lead = (new Date(y, m, 1).getDay() + 6) % 7;
+    const total = Math.ceil((lead + new Date(y, m + 1, 0).getDate()) / 7) * 7;
+    return Array.from({ length: total }, (_, i) => {
+      const date = new Date(y, m, i - lead + 1);
+      return { date, inMonth: date.getMonth() === m, key: i };
     });
   }, [cursor]);
 
-  const bookingsOnDay = (date) => {
-    const ds = startOfDay(date);
-    return bookings.filter(b => {
-      const s = startOfDay(new Date(b.startTime));
-      const e = startOfDay(new Date(b.endTime));
-      return ds >= s && ds <= e;
-    });
+  const onDay = (date) => {
+    const d = startOfDay(date);
+    return bookings.filter(b => d >= startOfDay(b.startTime) && d <= startOfDay(b.endTime));
   };
 
-  const prev = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1));
-  const next = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1));
-  const today = () => { setCursor(new Date()); setSelectedDate(new Date()); };
-
-  const selectedBookings = selectedDate ? bookingsOnDay(selectedDate) : [];
+  const move = (n) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + n, 1));
+  const goToday = () => { const d = new Date(); d.setDate(1); setCursor(d); setSelected(new Date()); };
+  const dayList = onDay(selected);
 
   return (
     <>
       <div className="page-head">
-        <div className="breadcrumb">admin <span className="accent">/</span> calendar</div>
-        <h1 className="page-title">Booking Calendar</h1>
-        <p className="page-sub">Month view of all approved &amp; pending reservations</p>
+        <div>
+          <h1>Calendar</h1>
+          <p>Which car is out when. Tap a day for the details.</p>
+        </div>
       </div>
 
       <div className="card">
         <div className="cal-toolbar">
-          <button className="btn btn-sm btn-ghost" onClick={prev}>← Prev</button>
-          <h3 className="cal-title">{monthNames[cursor.getMonth()]} {cursor.getFullYear()}</h3>
-          <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-sm btn-ghost" onClick={today}>Today</button>
-            <button className="btn btn-sm btn-ghost" onClick={next}>Next →</button>
+          <div className="cal-title">{MONTHS[cursor.getMonth()]} {cursor.getFullYear()}</div>
+          <div className="toolbar">
+            <button className="btn btn-ghost btn-sm" onClick={goToday}>Today</button>
+            <button className="icon-btn" onClick={() => move(-1)} aria-label="Previous month"><Icon name="chevL" size={16}/></button>
+            <button className="icon-btn" onClick={() => move(1)} aria-label="Next month"><Icon name="chevR" size={16}/></button>
           </div>
         </div>
-
-        <div className="cal-grid cal-headers">
-          {dayHeaders.map(d => <div key={d} className="cal-header-cell">{d}</div>)}
-        </div>
-
-        <div className="cal-grid">
+        <div className="cal">
+          {DAYS.map(d => <div key={d} className="cal-h">{d}</div>)}
           {cells.map(c => {
-            const dayBookings = bookingsOnDay(c.date);
-            const isToday = sameDay(c.date, new Date());
-            const isSelected = selectedDate && sameDay(c.date, selectedDate);
+            const list = onDay(c.date);
+            const cls = ['cal-cell', !c.inMonth && 'out', sameDay(c.date, new Date()) && 'today', sameDay(c.date, selected) && 'sel'].filter(Boolean).join(' ');
             return (
-              <div key={c.key}
-                className={`cal-cell ${c.inMonth ? '' : 'out'} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
-                onClick={() => setSelectedDate(c.date)}>
-                <div className="cal-date">{c.date.getDate()}</div>
-                <div className="cal-events">
-                  {dayBookings.slice(0,3).map(b => (
-                    <div key={b.id} className={`cal-event ev-${b.status.toLowerCase()}`} title={`${b.bookerName} · ${b.vehicleName}`}>
-                      {b.vehiclePlate}
-                    </div>
-                  ))}
-                  {dayBookings.length > 3 && <div className="cal-more">+{dayBookings.length-3}</div>}
-                </div>
+              <div key={c.key} className={cls} onClick={() => setSelected(c.date)}>
+                <div className="cal-d">{c.date.getDate()}</div>
+                {list.slice(0, 3).map(b => (
+                  <div key={b.id} className={`ev ev-${tripState(b)}`} title={`${b.bookerName} · ${b.vehicleName}`}>{b.vehiclePlate}</div>
+                ))}
+                {list.length > 3 && <div className="ev-more">+{list.length - 3} more</div>}
               </div>
             );
           })}
         </div>
+        <div className="mcal-legend" style={{ marginTop: 14 }}>
+          <span><i className="sw" style={{ background: 'var(--accent-soft)', boxShadow: 'inset 0 0 0 1px var(--accent)' }}/>Booked</span>
+          <span><i className="sw" style={{ background: 'var(--blue-soft)', boxShadow: 'inset 0 0 0 1px var(--blue)' }}/>In use</span>
+          <span><i className="sw" style={{ background: 'var(--slate-soft)', boxShadow: 'inset 0 0 0 1px var(--border-strong)' }}/>Returned</span>
+        </div>
       </div>
 
-      {selectedDate && (
-        <div className="card">
-          <h3 style={{marginBottom:14}}>
-            {selectedDate.toLocaleDateString('en-GB', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}
-          </h3>
-          {selectedBookings.length === 0 ? (
-            <p style={{color:'var(--muted)',fontSize:14}}>No bookings on this day.</p>
-          ) : (
-            <table>
-              <thead><tr><th>Vehicle</th><th>Booker</th><th>Period</th><th>Destination</th><th>Status</th></tr></thead>
-              <tbody>
-                {selectedBookings.map(b => (
-                  <tr key={b.id}>
-                    <td>{b.vehicleName} · <span className="mono">{b.vehiclePlate}</span></td>
-                    <td>{b.bookerName}{b.department && <span className="mono" style={{fontSize:11}}> · {b.department}</span>}</td>
-                    <td className="mono" style={{fontSize:12}}>
-                      {new Date(b.startTime).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
-                      <br/>→ {new Date(b.endTime).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
-                    </td>
-                    <td>{b.destination}</td>
-                    <td><span className={`badge badge-${b.status.toLowerCase()}`}>{b.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      <div className="card card-flush">
+        <div className="card-head">
+          <div className="card-title">{selected.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+          <span className="muted" style={{ fontSize: 13.5 }}>{dayList.length} booking{dayList.length === 1 ? '' : 's'}</span>
         </div>
-      )}
+        {dayList.length === 0 ? <div className="empty">No bookings on this day.</div> : (
+          <table className="tbl tbl-stack">
+            <thead><tr><th>Driver</th><th>Vehicle</th><th>When</th><th>Destination</th><th>Status</th></tr></thead>
+            <tbody>
+              {dayList.map(b => (
+                <tr key={b.id}>
+                  <td className="lead"><b>{b.bookerName}</b>{b.department && <div className="sub">{b.department}</div>}</td>
+                  <td data-label="Vehicle"><Plate>{b.vehiclePlate}</Plate></td>
+                  <td data-label="When" className="num">{fmtRange(b.startTime, b.endTime)}</td>
+                  <td data-label="Destination">{b.destination}</td>
+                  <td data-label="Status"><StatusPill state={tripState(b)}/></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </>
   );
 }

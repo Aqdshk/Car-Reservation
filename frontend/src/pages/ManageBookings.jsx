@@ -1,156 +1,131 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../api';
+import Modal from '../components/Modal';
+import { Icon, Plate, StatusPill, bookingRef, fmtDTY, fmtRange, tripState } from '../lib/ui';
 
-const fmt = (s) => new Date(s).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
-const fmtFull = (s) => new Date(s).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-const badge = (s) => `badge badge-${s.toLowerCase()}`;
+const FILTERS = [['all', 'All'], ['booked', 'Upcoming'], ['inuse', 'In use'], ['done', 'Returned']];
+const photoUrl = (code, file) => `/api/reservations/track/${code}/photo/${file}`;
+
+function Detail({ r, onClose, onDelete }) {
+  const km = r.checkedOutAt ? r.endMileage - r.startMileage : null;
+  return (
+    <Modal title={`${r.bookerName} · ${r.vehicleName}`} subtitle={<>{bookingRef(r.id)} · <span className="code">{r.trackingCode}</span></>} onClose={onClose}
+      footer={<>
+        <button className="btn btn-danger" onClick={() => onDelete(r)}><Icon name="trash" size={15}/>Delete booking</button>
+        <button className="btn btn-ghost" onClick={onClose}>Close</button>
+      </>}>
+      <div className="facts">
+        <div className="fact"><div className="k">Status</div><div className="v"><StatusPill state={tripState(r)}/></div></div>
+        <div className="fact"><div className="k">Vehicle</div><div className="v"><Plate>{r.vehiclePlate}</Plate></div></div>
+        <div className="fact"><div className="k">When</div><div className="v">{fmtRange(r.startTime, r.endTime)}</div></div>
+        <div className="fact"><div className="k">Destination</div><div className="v">{r.destination}</div></div>
+        <div className="fact"><div className="k">Phone</div><div className="v">{r.bookerPhone ? <a href={`tel:${r.bookerPhone}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>{r.bookerPhone}</a> : <span className="muted">Not given</span>}</div></div>
+        <div className="fact"><div className="k">Department</div><div className="v">{r.department || <span className="muted">—</span>}</div></div>
+        <div className="fact"><div className="k">People</div><div className="v">{r.passengers}{r.passengerNames && <div className="muted" style={{ fontSize: 13.5 }}>{r.passengerNames}</div>}</div></div>
+        <div className="fact"><div className="k">Cards</div><div className="v">
+          {r.needTngCard || r.needFuelCard
+            ? <span style={{ display: 'flex', gap: 6 }}>{r.needTngCard && <span className="tag">Touch 'n Go</span>}{r.needFuelCard && <span className="tag">Fuel</span>}</span>
+            : <span className="muted">None</span>}
+        </div></div>
+        {r.notes && <div className="fact" style={{ gridColumn: '1/-1' }}><div className="k">Notes</div><div className="v">{r.notes}</div></div>}
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}><Icon name="gauge" size={17}/>Odometer</div>
+      <div className="facts">
+        {[['Check in', r.checkedInAt, r.startMileage, r.startMileagePhoto], ['Check out', r.checkedOutAt, r.endMileage, r.endMileagePhoto]].map(([label, at, val, photo]) => (
+          <div className="done-box" key={label}>
+            <div className="k muted" style={{ fontSize: 12.5, fontWeight: 600 }}>{label}</div>
+            {at ? <>
+              <div className="big-num">{val?.toLocaleString()} km</div>
+              <div className="muted" style={{ fontSize: 13 }}>{fmtDTY(at)}</div>
+              {photo && <a href={photoUrl(r.trackingCode, photo)} target="_blank" rel="noreferrer"><img src={photoUrl(r.trackingCode, photo)} alt={`${label} odometer`} className="proof-photo" loading="lazy"/></a>}
+            </> : <div className="muted" style={{ fontSize: 14, marginTop: 4 }}>Not yet</div>}
+          </div>
+        ))}
+      </div>
+      {km != null && <div className="trip-summary"><Icon name="check" size={16}/>{km.toLocaleString()} km driven</div>}
+    </Modal>
+  );
+}
 
 export default function ManageBookings() {
   const [items, setItems] = useState([]);
-  const [filter, setFilter] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [q, setQ] = useState('');
   const [detail, setDetail] = useState(null);
 
-  const load = () => api.get('/reservations', { params: { pageSize: 500 } }).then(r => setItems(r.data.items));
+  const load = () => api.get('/reservations', { params: { pageSize: 500 } })
+    .then(r => setItems(r.data.items || [])).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
-  const del = async (id) => {
-    if (!confirm('Delete this booking permanently?')) return;
-    await api.delete(`/reservations/${id}`);
+  const del = async (r) => {
+    if (!confirm(`Delete booking ${r.trackingCode} for ${r.bookerName}? This cannot be undone.`)) return;
+    await api.delete(`/reservations/${r.id}`);
     setDetail(null);
     load();
   };
 
-  const filtered = items.filter(i => {
-    if (filter === 'All') return true;
-    if (filter === 'Done') return !!i.checkedOutAt;
-    if (filter === 'Active') return !i.checkedOutAt;
-    return true;
-  });
+  const counts = useMemo(() => items.reduce((c, i) => { c[tripState(i)]++; c.all++; return c; }, { all: 0, booked: 0, inuse: 0, done: 0 }), [items]);
+
+  const rows = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return items.filter(i => {
+      if (filter !== 'all' && tripState(i) !== filter) return false;
+      if (!s) return true;
+      return [i.bookerName, i.vehiclePlate, i.vehicleName, i.trackingCode, i.destination, i.department]
+        .some(v => v && v.toLowerCase().includes(s));
+    });
+  }, [items, filter, q]);
 
   return (
     <>
       <div className="page-head">
-        <div className="breadcrumb">admin <span className="accent">/</span> bookings</div>
-        <h1 className="page-title">All Bookings</h1>
-        <p className="page-sub">Review and process reservation requests</p>
-      </div>
-
-      <div className="card">
-        <div className="card-header">
-          <h3>Booking Queue</h3>
-          <select value={filter} onChange={(e) => setFilter(e.target.value)}
-            style={{padding:'7px 12px',border:'1px solid var(--border)',borderRadius:6,background:'var(--bg-2)',color:'var(--text)',fontSize:12}}>
-            <option>All</option><option value="Active">Upcoming / In use</option><option value="Done">Completed</option>
-          </select>
+        <div>
+          <h1>Bookings</h1>
+          <p>Every booking is confirmed when it is made. Open one to see the odometer photos.</p>
         </div>
-        <table>
-          <thead><tr><th>ID / Code</th><th>Booker</th><th>Contact</th><th>Vehicle</th><th>Period</th><th>Purpose</th><th>Extras</th><th>Mileage</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            {filtered.map(r => (
-              <tr key={r.id} style={{cursor:'pointer'}} onClick={() => setDetail(r)}>
-                <td>
-                  <div className="mono">#R{String(r.id).padStart(3,'0')}</div>
-                  <div className="mono" style={{color:'var(--accent)',fontSize:11,fontWeight:700,letterSpacing:1}}>{r.trackingCode}</div>
-                </td>
-                <td>{r.bookerName}{r.department && <div className="mono" style={{fontSize:11}}>{r.department}</div>}</td>
-                <td>
-                  {r.bookerPhone ? <div className="mono" style={{fontSize:12}}>{r.bookerPhone}</div> : <span style={{color:'var(--muted)'}}>—</span>}
-                </td>
-                <td>{r.vehicleName}</td>
-                <td><span className="mono">{fmt(r.startTime)}</span></td>
-                <td>{r.destination}</td>
-                <td className="mono" style={{fontSize:11}}>
-                  {r.needTngCard && <div style={{color:'var(--accent)'}}>TnG ✓</div>}
-                  {r.needFuelCard && <div style={{color:'var(--accent)'}}>Fuel ✓</div>}
-                  {!r.needTngCard && !r.needFuelCard && <span style={{color:'var(--muted)'}}>—</span>}
-                </td>
-                <td className="mono" style={{fontSize:11}}>
-                  {r.checkedInAt ? <div style={{color:'var(--accent)'}}>In: {r.startMileage?.toLocaleString()}km</div> : <div style={{color:'var(--muted)'}}>—</div>}
-                  {r.checkedOutAt ? <div style={{color:'var(--accent)'}}>Out: {r.endMileage?.toLocaleString()}km</div> : null}
-                  {r.checkedInAt && r.checkedOutAt && <div style={{color:'var(--accent)',fontWeight:700}}>Δ {(r.endMileage - r.startMileage).toLocaleString()}km</div>}
-                </td>
-                <td>
-                  {r.checkedOutAt ? <span className="badge badge-approved">Done</span>
-                    : r.checkedInAt ? <span className="badge badge-inuse">In use</span>
-                    : <span className="badge badge-approved">Booked</span>}
-                </td>
-                <td onClick={(e) => e.stopPropagation()}>
-                  <button className="btn btn-sm btn-ghost" onClick={() => del(r.id)}>🗑</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
 
-      {detail && (
-        <div className="modal-backdrop" onClick={() => setDetail(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <div className="breadcrumb">booking <span className="accent">/</span> #R{String(detail.id).padStart(3,'0')}</div>
-                <h2 style={{fontSize:22,marginTop:4}}>{detail.bookerName} · {detail.vehicleName}</h2>
-              </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setDetail(null)}>✕ Close</button>
-            </div>
-
-            <div className="info-grid" style={{marginBottom:18}}>
-              <div><div className="info-label">TRACKING CODE</div><div className="mono" style={{fontSize:18,fontWeight:700,color:'var(--accent)',letterSpacing:2}}>{detail.trackingCode}</div></div>
-              <div><div className="info-label">STATUS</div>
-                {detail.checkedOutAt ? <span className="badge badge-approved">Done</span>
-                  : detail.checkedInAt ? <span className="badge badge-inuse">In use</span>
-                  : <span className="badge badge-approved">Booked</span>}
-              </div>
-              <div><div className="info-label">VEHICLE</div><div>{detail.vehicleName} · <span className="mono">{detail.vehiclePlate}</span></div></div>
-              <div><div className="info-label">DESTINATION</div><div>{detail.destination}</div></div>
-              <div><div className="info-label">PERIOD</div><div className="mono" style={{fontSize:12}}>{fmtFull(detail.startTime)}<br/>→ {fmtFull(detail.endTime)}</div></div>
-              <div><div className="info-label">PASSENGERS</div><div>{detail.passengers}{detail.passengerNames && <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>{detail.passengerNames}</div>}</div></div>
-              <div><div className="info-label">PHONE</div><div className="mono" style={{fontSize:12}}>{detail.bookerPhone || '-'}</div></div>
-              <div><div className="info-label">EXTRAS</div><div>
-                {detail.needTngCard && <span className="badge badge-approved" style={{marginRight:6}}>TnG</span>}
-                {detail.needFuelCard && <span className="badge badge-approved">Fuel</span>}
-                {!detail.needTngCard && !detail.needFuelCard && <span style={{color:'var(--muted)'}}>—</span>}
-              </div></div>
-              {detail.notes && <div style={{gridColumn:'1/-1'}}><div className="info-label">NOTES</div><div style={{fontSize:13}}>{detail.notes}</div></div>}
-            </div>
-
-            <h3 style={{marginBottom:12,fontSize:15}}>Mileage Records</h3>
-            <div className="info-grid">
-              <div>
-                <div className="info-label">CHECK-IN</div>
-                {detail.checkedInAt ? (
-                  <>
-                    <div className="mono" style={{fontSize:18,fontWeight:700}}>{detail.startMileage?.toLocaleString()} km</div>
-                    <div className="mono" style={{fontSize:11,color:'var(--muted)'}}>{fmtFull(detail.checkedInAt)}</div>
-                    {detail.startMileagePhoto && <img src={`/api/reservations/track/${detail.trackingCode}/photo/${detail.startMileagePhoto}`} alt="Start mileage" className="proof-photo" style={{marginTop:8}}/>}
-                  </>
-                ) : <div style={{color:'var(--muted)',fontSize:13}}>Not checked in yet</div>}
-              </div>
-              <div>
-                <div className="info-label">CHECK-OUT</div>
-                {detail.checkedOutAt ? (
-                  <>
-                    <div className="mono" style={{fontSize:18,fontWeight:700}}>{detail.endMileage?.toLocaleString()} km</div>
-                    <div className="mono" style={{fontSize:11,color:'var(--muted)'}}>{fmtFull(detail.checkedOutAt)}</div>
-                    {detail.endMileagePhoto && <img src={`/api/reservations/track/${detail.trackingCode}/photo/${detail.endMileagePhoto}`} alt="End mileage" className="proof-photo" style={{marginTop:8}}/>}
-                  </>
-                ) : <div style={{color:'var(--muted)',fontSize:13}}>Not checked out yet</div>}
-              </div>
-            </div>
-
-            {detail.checkedInAt && detail.checkedOutAt && (
-              <div style={{marginTop:18,padding:14,background:'var(--bg-2)',border:'1px solid var(--accent)',borderLeft:'3px solid var(--accent)',borderRadius:8}}>
-                <div className="info-label">DISTANCE TRAVELED</div>
-                <div className="mono" style={{fontSize:24,fontWeight:700,color:'var(--accent)'}}>{(detail.endMileage - detail.startMileage).toLocaleString()} km</div>
-              </div>
-            )}
-
-            <div className="form-actions" style={{marginTop:24}}>
-              <button className="btn btn-danger" onClick={() => del(detail.id)}>Delete booking</button>
-            </div>
+      <div className="card card-flush">
+        <div className="card-head">
+          <div className="seg" role="tablist">
+            {FILTERS.map(([k, label]) => (
+              <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{label} <span className="muted num">{counts[k]}</span></button>
+            ))}
+          </div>
+          <div className="search">
+            <Icon name="search" size={16}/>
+            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, plate, code…" aria-label="Search bookings"/>
           </div>
         </div>
-      )}
+        {loading ? <div className="empty">Loading…</div> : rows.length === 0 ? <div className="empty">{items.length ? 'Nothing matches.' : 'No bookings yet.'}</div> : (
+          <table className="tbl tbl-stack">
+            <thead><tr><th>Driver</th><th>Vehicle</th><th>When</th><th>Destination</th><th>Odometer</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id} className="click" onClick={() => setDetail(r)}>
+                  <td className="lead">
+                    <b>{r.bookerName}</b>
+                    <div className="sub"><span className="code">{r.trackingCode}</span>{r.department && ` · ${r.department}`}</div>
+                  </td>
+                  <td data-label="Vehicle"><Plate>{r.vehiclePlate}</Plate></td>
+                  <td data-label="When" className="num">{fmtRange(r.startTime, r.endTime)}</td>
+                  <td data-label="Destination">{r.destination}</td>
+                  <td data-label="Odometer" className="num">
+                    {r.checkedOutAt ? <b>{(r.endMileage - r.startMileage).toLocaleString()} km</b>
+                      : r.checkedInAt ? <span>{r.startMileage?.toLocaleString()} km out</span>
+                      : <span className="muted">—</span>}
+                  </td>
+                  <td data-label="Status"><StatusPill state={tripState(r)}/></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {detail && <Detail r={detail} onClose={() => setDetail(null)} onDelete={del}/>}
     </>
   );
 }

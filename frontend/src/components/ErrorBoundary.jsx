@@ -18,11 +18,11 @@ export default class ErrorBoundary extends Component {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--bg)', color: 'var(--text)', padding: 24, fontFamily: 'JetBrains Mono, monospace'
+        background: 'var(--bg)', color: 'var(--text)', padding: 24, fontFamily: 'Inter, system-ui, sans-serif'
       }}>
         <div style={{
           maxWidth: 520, padding: 28, border: '1px solid var(--border)', borderLeft: '3px solid var(--accent)',
-          borderRadius: 8, background: 'var(--bg-2)'
+          borderRadius: 8, background: 'var(--surface)'
         }}>
           <div style={{ fontSize: 12, letterSpacing: 2, color: 'var(--muted)', marginBottom: 8 }}>UI ERROR</div>
           <h2 style={{ fontSize: 20, marginBottom: 12 }}>Something broke on this page</h2>

@@ -1,192 +1,161 @@
 import { useEffect, useMemo, useState } from 'react';
-import api from '../api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import api from '../api';
+import { Icon, Plate, bookingRef, fmtDTY, tripState } from '../lib/ui';
 
-const fmtDate = (s) => new Date(s).toLocaleDateString('en-GB');
-const fmtDT = (s) => new Date(s).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-const hoursBetween = (s, e) => Math.max(0, (new Date(e) - new Date(s)) / 36e5);
-const actualKm = (b) => (b.endMileage != null && b.startMileage != null) ? (b.endMileage - b.startMileage) : 0;
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fmtDate = (s) => new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const hours = (b) => Math.max(0, (new Date(b.endTime) - new Date(b.startTime)) / 36e5);
+const km = (b) => (b.endMileage != null && b.startMileage != null) ? b.endMileage - b.startMileage : 0;
+const STATE = { booked: 'Booked', inuse: 'In use', done: 'Returned' };
+
+const PRESETS = {
+  'This month': () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth(), 1), new Date(n.getFullYear(), n.getMonth() + 1, 0)]; },
+  'Last month': () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth() - 1, 1), new Date(n.getFullYear(), n.getMonth(), 0)]; },
+  'This year': () => { const n = new Date(); return [new Date(n.getFullYear(), 0, 1), new Date(n.getFullYear(), 11, 31)]; },
+};
 
 export default function Reports() {
   const [bookings, setBookings] = useState([]);
   const [vehicles, setVehicles] = useState([]);
-  const [from, setFrom] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0,10);
-  });
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0,10));
+  const [[from, to], setRange] = useState(() => PRESETS['This month']().map(iso));
 
   useEffect(() => {
-    api.get('/reservations', { params: { pageSize: 500 } }).then(r => setBookings(r.data.items));
+    api.get('/reservations', { params: { pageSize: 500 } }).then(r => setBookings(r.data.items || []));
     api.get('/vehicles').then(r => setVehicles(r.data));
   }, []);
 
-  const filtered = useMemo(() => {
-    const f = new Date(from), t = new Date(to); t.setHours(23,59,59);
-    return bookings.filter(b => {
-      const s = new Date(b.startTime);
-      return s >= f && s <= t;
-    });
+  const inRange = useMemo(() => {
+    const f = new Date(from), t = new Date(to); f.setHours(0, 0, 0, 0); t.setHours(23, 59, 59, 999);
+    return bookings.filter(b => { const s = new Date(b.startTime); return s >= f && s <= t; });
   }, [bookings, from, to]);
 
-  const perVehicle = useMemo(() => {
-    return vehicles.map(v => {
-      const list = filtered.filter(b => b.vehicleId === v.id);
-      const approved = list.filter(b => b.status === 'Approved');
-      const totalHours = approved.reduce((sum, b) => sum + hoursBetween(b.startTime, b.endTime), 0);
-      const actualMileage = approved.reduce((sum, b) => sum + actualKm(b), 0);
-      const completed = approved.filter(b => b.checkedOutAt).length;
-      return {
-        vehicle: v,
-        total: list.length,
-        approved: approved.length,
-        pending: list.filter(b => b.status === 'Pending').length,
-        rejected: list.filter(b => b.status === 'Rejected').length,
-        completed,
-        hours: Math.round(totalHours * 10) / 10,
-        km: actualMileage,
-      };
-    });
-  }, [filtered, vehicles]);
+  const perVehicle = useMemo(() => vehicles.map(v => {
+    const list = inRange.filter(b => b.vehicleId === v.id);
+    return {
+      v, total: list.length,
+      returned: list.filter(b => b.checkedOutAt).length,
+      hours: Math.round(list.reduce((s, b) => s + hours(b), 0) * 10) / 10,
+      km: list.reduce((s, b) => s + km(b), 0),
+    };
+  }).sort((a, b) => b.km - a.km || b.total - a.total), [inRange, vehicles]);
 
   const totals = useMemo(() => ({
-    total: filtered.length,
-    approved: filtered.filter(b => b.status === 'Approved').length,
-    pending: filtered.filter(b => b.status === 'Pending').length,
-    rejected: filtered.filter(b => b.status === 'Rejected').length,
-    completed: filtered.filter(b => b.checkedOutAt).length,
-    totalKm: filtered.reduce((sum, b) => sum + actualKm(b), 0),
-  }), [filtered]);
+    total: inRange.length,
+    returned: inRange.filter(b => b.checkedOutAt).length,
+    hours: Math.round(inRange.reduce((s, b) => s + hours(b), 0)),
+    km: inRange.reduce((s, b) => s + km(b), 0),
+  }), [inRange]);
 
-  const downloadPdf = () => {
+  const pdf = () => {
     const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const head = { fillColor: [15, 118, 110], textColor: 255, fontStyle: 'bold' };
 
-    doc.setFontSize(18); doc.setFont('helvetica', 'bold');
-    doc.text('C-Zero Cars — Usage Report', 14, 18);
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100);
-    doc.text(`Period: ${fmtDate(from)} to ${fmtDate(to)}`, 14, 26);
-    doc.text(`Generated: ${new Date().toLocaleString('en-GB')}`, 14, 31);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
+    doc.text('C-Zero Cars: vehicle usage', 14, 18);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(100);
+    doc.text(`${fmtDate(from)} to ${fmtDate(to)}`, 14, 25);
+    doc.text(`Generated ${new Date().toLocaleString('en-GB')}`, 14, 30);
 
-    doc.setFontSize(12); doc.setTextColor(0); doc.setFont('helvetica', 'bold');
-    doc.text('Summary', 14, 42);
     autoTable(doc, {
-      startY: 46,
-      head: [['Total', 'Approved', 'Completed', 'Pending', 'Rejected', 'Total Distance (km)']],
-      body: [[totals.total, totals.approved, totals.completed, totals.pending, totals.rejected, totals.totalKm.toLocaleString()]],
-      theme: 'grid',
-      headStyles: { fillColor: [40, 40, 50], textColor: 255 },
-      styles: { fontSize: 10 },
+      startY: 38, theme: 'grid', headStyles: head, styles: { fontSize: 10 },
+      head: [['Bookings', 'Returned', 'Hours booked', 'Distance (km)']],
+      body: [[totals.total, totals.returned, totals.hours, totals.km.toLocaleString()]],
     });
 
-    doc.setFont('helvetica', 'bold');
-    doc.text('Per-Vehicle Usage', 14, doc.lastAutoTable.finalY + 12);
+    doc.setTextColor(0); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+    doc.text('By vehicle', 14, doc.lastAutoTable.finalY + 11);
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 16,
-      head: [['Plate', 'Vehicle', 'Total', 'Approved', 'Completed', 'Hours', 'Distance (km)']],
-      body: perVehicle.map(p => [
-        p.vehicle.plateNumber,
-        `${p.vehicle.make} ${p.vehicle.model}`,
-        p.total, p.approved, p.completed,
-        p.hours, p.km.toLocaleString()
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [40, 40, 50], textColor: 255 },
-      styles: { fontSize: 9 },
+      startY: doc.lastAutoTable.finalY + 14, theme: 'grid', headStyles: head, styles: { fontSize: 9 },
+      head: [['Plate', 'Vehicle', 'Bookings', 'Returned', 'Hours', 'Distance (km)']],
+      body: perVehicle.map(p => [p.v.plateNumber, `${p.v.make} ${p.v.model}`, p.total, p.returned, p.hours, p.km.toLocaleString()]),
     });
 
-    if (filtered.length > 0) {
+    if (inRange.length) {
       doc.setFont('helvetica', 'bold');
-      doc.text('Booking Details', 14, doc.lastAutoTable.finalY + 12);
+      doc.text('Bookings', 14, doc.lastAutoTable.finalY + 11);
       autoTable(doc, {
-        startY: doc.lastAutoTable.finalY + 16,
-        head: [['ID', 'Code', 'Booker', 'Vehicle', 'Period', 'Start km', 'End km', 'Distance', 'Status']],
-        body: filtered.map(b => [
-          `#R${String(b.id).padStart(3,'0')}`,
-          b.trackingCode,
+        startY: doc.lastAutoTable.finalY + 14, theme: 'striped', headStyles: head,
+        styles: { fontSize: 8, cellPadding: 2 }, columnStyles: { 4: { cellWidth: 38 } },
+        head: [['Ref', 'Code', 'Driver', 'Vehicle', 'When', 'Start km', 'End km', 'Distance', 'Status']],
+        body: inRange.map(b => [
+          bookingRef(b.id), b.trackingCode,
           `${b.bookerName}${b.department ? `\n${b.department}` : ''}`,
           `${b.vehicleName}\n${b.vehiclePlate}`,
-          `${fmtDT(b.startTime)}\n→ ${fmtDT(b.endTime)}`,
-          b.startMileage != null ? b.startMileage.toLocaleString() : '-',
-          b.endMileage != null ? b.endMileage.toLocaleString() : '-',
-          actualKm(b) > 0 ? `${actualKm(b).toLocaleString()} km` : '-',
-          b.status,
+          `${fmtDTY(b.startTime)}\nto ${fmtDTY(b.endTime)}`,
+          b.startMileage?.toLocaleString() ?? '-', b.endMileage?.toLocaleString() ?? '-',
+          km(b) > 0 ? `${km(b).toLocaleString()} km` : '-', STATE[tripState(b)],
         ]),
-        theme: 'striped',
-        headStyles: { fillColor: [40, 40, 50], textColor: 255 },
-        styles: { fontSize: 8, cellPadding: 2 },
-        columnStyles: { 4: { cellWidth: 38 } },
       });
     }
 
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8); doc.setTextColor(150);
-      doc.text(`Page ${i} of ${pageCount}`, pageWidth - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
-      doc.text('c-zero booking system', 14, doc.internal.pageSize.getHeight() - 8);
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i); doc.setFontSize(8); doc.setTextColor(150);
+      doc.text('C-Zero Cars', 14, H - 8);
+      doc.text(`Page ${i} of ${pages}`, W - 14, H - 8, { align: 'right' });
     }
-
-    doc.save(`car-usage-report_${from}_to_${to}.pdf`);
+    doc.save(`vehicle-usage_${from}_to_${to}.pdf`);
   };
 
   return (
     <>
       <div className="page-head">
-        <div className="breadcrumb">admin <span className="accent">/</span> reports</div>
-        <h1 className="page-title">Usage Reports</h1>
-        <p className="page-sub">Vehicle utilization &amp; booking statistics</p>
+        <div>
+          <h1>Reports</h1>
+          <p>How much each vehicle is used, by bookings started in the period.</p>
+        </div>
+        <button className="btn" onClick={pdf}><Icon name="download" size={16}/>Download PDF</button>
       </div>
 
-      <div className="card">
-        <div className="card-header">
-          <h3>Report Period</h3>
-          <button className="btn" onClick={downloadPdf}>↓ Download PDF</button>
-        </div>
-        <div className="form-grid">
-          <div className="form-group">
-            <label>FROM</label>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}/>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+          <div className="seg">
+            {Object.entries(PRESETS).map(([label, fn]) => {
+              const [a, b] = fn().map(iso);
+              return <button key={label} className={a === from && b === to ? 'on' : ''} onClick={() => setRange([a, b])}>{label}</button>;
+            })}
           </div>
-          <div className="form-group">
-            <label>TO</label>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)}/>
+          <div className="toolbar">
+            <div className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <label htmlFor="from" style={{ fontWeight: 500 }}>From</label>
+              <input id="from" type="date" value={from} max={to} onChange={(e) => setRange([e.target.value, to])} style={{ height: 38, width: 'auto' }}/>
+            </div>
+            <div className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <label htmlFor="to" style={{ fontWeight: 500 }}>To</label>
+              <input id="to" type="date" value={to} min={from} onChange={(e) => setRange([from, e.target.value])} style={{ height: 38, width: 'auto' }}/>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="stats">
-        <div className="stat-card"><div className="label">Total Bookings</div><div className="value">{String(totals.total).padStart(2,'0')}</div><div className="delta">in period</div></div>
-        <div className="stat-card"><div className="label">Approved</div><div className="value">{String(totals.approved).padStart(2,'0')}</div><div className="delta">{totals.completed} completed</div></div>
-        <div className="stat-card"><div className="label">Pending</div><div className="value">{String(totals.pending).padStart(2,'0')}</div><div className="delta">awaiting</div></div>
-        <div className="stat-card"><div className="label">Total Distance</div><div className="value">{totals.totalKm.toLocaleString()}</div><div className="delta">km traveled</div></div>
+        <div className="stat"><div className="k"><Icon name="list" size={16}/>Bookings</div><div className="v">{totals.total}</div><div className="s">in the period</div></div>
+        <div className="stat"><div className="k"><Icon name="check" size={16}/>Returned</div><div className="v">{totals.returned}</div><div className="s">trips completed</div></div>
+        <div className="stat"><div className="k"><Icon name="clock" size={16}/>Hours booked</div><div className="v">{totals.hours.toLocaleString()}</div><div className="s">across the fleet</div></div>
+        <div className="stat"><div className="k"><Icon name="gauge" size={16}/>Distance</div><div className="v">{totals.km.toLocaleString()}</div><div className="s">km driven</div></div>
       </div>
 
-      <div className="card">
-        <h3 style={{marginBottom:16}}>Per-Vehicle Usage</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Plate</th><th>Vehicle</th>
-              <th>Total</th><th>Approved</th><th>Completed</th>
-              <th>Hours</th><th>Distance (km)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {perVehicle.map(p => (
-              <tr key={p.vehicle.id}>
-                <td><span className="mono">{p.vehicle.plateNumber}</span></td>
-                <td>{p.vehicle.make} {p.vehicle.model}</td>
-                <td>{p.total}</td>
-                <td style={{color:'var(--accent)'}}>{p.approved}</td>
-                <td style={{color:'var(--accent)'}}>{p.completed}</td>
-                <td className="mono">{p.hours} h</td>
-                <td className="mono" style={{color:'var(--accent)',fontWeight:700}}>{p.km.toLocaleString()} km</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="card card-flush">
+        <div className="card-head"><div className="card-title">By vehicle</div></div>
+        {perVehicle.length === 0 ? <div className="empty">No vehicles.</div> : (
+          <table className="tbl tbl-stack">
+            <thead><tr><th>Vehicle</th><th className="right">Bookings</th><th className="right">Returned</th><th className="right">Hours</th><th className="right">Distance</th></tr></thead>
+            <tbody>
+              {perVehicle.map(p => (
+                <tr key={p.v.id}>
+                  <td className="lead"><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Plate>{p.v.plateNumber}</Plate><span>{p.v.make} {p.v.model}</span></div></td>
+                  <td data-label="Bookings" className="right num">{p.total}</td>
+                  <td data-label="Returned" className="right num">{p.returned}</td>
+                  <td data-label="Hours" className="right num">{p.hours}</td>
+                  <td data-label="Distance" className="right num"><b>{p.km.toLocaleString()} km</b></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );

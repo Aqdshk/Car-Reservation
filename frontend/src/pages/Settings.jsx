@@ -1,96 +1,84 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
+import { Icon } from '../lib/ui';
+
+function CardStat({ label, icon, total, inUse }) {
+  const free = Math.max(0, total - inUse);
+  const pct = total ? Math.round((inUse / total) * 100) : 0;
+  return (
+    <div className="stat">
+      <div className="k"><Icon name={icon} size={16}/>{label}</div>
+      <div className="v">{free}<span className="muted" style={{ fontSize: 16, fontWeight: 600 }}> / {total} free</span></div>
+      <div style={{ height: 6, borderRadius: 99, background: 'var(--sunken)', marginTop: 12, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: free === 0 && total ? 'var(--red)' : 'var(--accent)', borderRadius: 99 }}/>
+      </div>
+      <div className="s">{inUse} on open bookings</div>
+    </div>
+  );
+}
 
 export default function Settings() {
   const [status, setStatus] = useState(null);
   const [tng, setTng] = useState(0);
   const [fuel, setFuel] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState(null);
 
   const load = async () => {
     const { data } = await api.get('/settings/cards');
-    setStatus(data);
-    setTng(data.totalTng);
-    setFuel(data.totalFuel);
+    setStatus(data); setTng(data.totalTng); setFuel(data.totalFuel);
   };
   useEffect(() => { load(); }, []);
 
   const save = async (e) => {
-    e.preventDefault();
-    setSaving(true); setMsg('');
+    e.preventDefault(); setSaving(true); setMsg(null);
     try {
       await api.put('/settings/cards', { totalTngCards: Number(tng), totalFuelCards: Number(fuel) });
-      setMsg('✓ Saved');
       await load();
-      setTimeout(() => setMsg(''), 2500);
+      setMsg({ ok: true, text: 'Saved.' });
+      setTimeout(() => setMsg(null), 2500);
     } catch (e) {
-      setMsg(e.response?.data?.message || 'Failed to save');
+      setMsg({ ok: false, text: e.response?.data?.message || 'Could not save.' });
     } finally { setSaving(false); }
   };
 
-  if (!status) return null;
+  if (!status) return <div className="card empty">Loading…</div>;
 
   return (
     <>
       <div className="page-head">
-        <div className="breadcrumb">admin <span className="accent">/</span> settings</div>
-        <h1 className="page-title">Card Inventory</h1>
-        <p className="page-sub">Manage Touch 'n Go and Fuel card stock</p>
+        <div>
+          <h1>Cards</h1>
+          <p>How many Touch 'n Go and fuel cards the office holds.</p>
+        </div>
       </div>
 
-      <div className="stats">
-        <div className="stat-card">
-          <div className="label">Total TnG Cards</div>
-          <div className="value">{String(status.totalTng).padStart(2,'0')}</div>
-          <div className="delta">in inventory</div>
-        </div>
-        <div className="stat-card">
-          <div className="label">TnG In Use</div>
-          <div className="value" style={{color:'var(--orange)'}}>{String(status.inUseTng).padStart(2,'0')}</div>
-          <div className="delta">currently out</div>
-        </div>
-        <div className="stat-card">
-          <div className="label">Total Fuel Cards</div>
-          <div className="value">{String(status.totalFuel).padStart(2,'0')}</div>
-          <div className="delta">in inventory</div>
-        </div>
-        <div className="stat-card">
-          <div className="label">Fuel In Use</div>
-          <div className="value" style={{color:'var(--orange)'}}>{String(status.inUseFuel).padStart(2,'0')}</div>
-          <div className="delta">currently out</div>
-        </div>
+      <div className="stats" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))' }}>
+        <CardStat label="Touch 'n Go" icon="card" total={status.totalTng} inUse={status.inUseTng}/>
+        <CardStat label="Fuel" icon="fuel" total={status.totalFuel} inUse={status.inUseFuel}/>
       </div>
 
       <form className="card" onSubmit={save}>
-        <h3 style={{marginBottom:16}}>Update Inventory</h3>
-        {msg && <div className={msg.startsWith('✓') ? '' : 'error'} style={msg.startsWith('✓') ? {color:'var(--accent)',marginBottom:14,fontSize:13} : null}>{msg}</div>}
-        <div className="form-grid">
-          <div className="form-group">
-            <label>TOTAL TNG CARDS</label>
-            <input type="number" min="0" value={tng} onChange={(e) => setTng(e.target.value)} required/>
-            <p style={{fontSize:11,color:'var(--muted)',marginTop:6,fontFamily:'JetBrains Mono'}}>{status.availableTng} available now</p>
+        <div className="card-title" style={{ marginBottom: 14 }}>Cards in the office</div>
+        <div className="grid-2" style={{ maxWidth: 520 }}>
+          <div className="field">
+            <label htmlFor="tng">Touch 'n Go cards</label>
+            <input id="tng" type="number" min="0" value={tng} onChange={(e) => setTng(e.target.value)} required/>
           </div>
-          <div className="form-group">
-            <label>TOTAL FUEL CARDS</label>
-            <input type="number" min="0" value={fuel} onChange={(e) => setFuel(e.target.value)} required/>
-            <p style={{fontSize:11,color:'var(--muted)',marginTop:6,fontFamily:'JetBrains Mono'}}>{status.availableFuel} available now</p>
+          <div className="field">
+            <label htmlFor="fuel">Fuel cards</label>
+            <input id="fuel" type="number" min="0" value={fuel} onChange={(e) => setFuel(e.target.value)} required/>
           </div>
         </div>
-        <div className="form-actions">
-          <button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+        <p className="hint" style={{ marginTop: 14, maxWidth: 620 }}>
+          "Out" counts every booking that asked for a card and has not been checked out (returned) yet,
+          including future ones. A new booking only gets a card if one is free for its own dates.
+        </p>
+        {msg && <div className={`alert ${msg.ok ? 'alert-ok' : ''}`} style={{ marginTop: 14 }}>{msg.text}</div>}
+        <div style={{ marginTop: 18 }}>
+          <button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </form>
-
-      <div className="card">
-        <h3 style={{marginBottom:10,fontSize:15}}>How it works</h3>
-        <ul style={{listStyle:'disc',paddingLeft:20,fontSize:13,color:'var(--muted)',lineHeight:1.7}}>
-          <li>When a booking is <strong>approved</strong> with a card requested → card counts as "in use"</li>
-          <li>When user <strong>checks out</strong> the vehicle → card becomes available again</li>
-          <li>If all cards are in use, the checkbox is disabled on the booking form</li>
-          <li>Admin can also see remaining count when approving requests</li>
-        </ul>
-      </div>
     </>
   );
 }

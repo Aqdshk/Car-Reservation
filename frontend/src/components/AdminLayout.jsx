@@ -1,47 +1,57 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { Suspense } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../auth';
 import ThemeToggle from './ThemeToggle';
+import { Brand } from './PublicShell';
+import { Icon } from '../lib/ui';
+
+const LINKS = [
+  { to: '/admin', end: true, icon: 'dashboard', label: 'Overview' },
+  { to: '/admin/bookings', icon: 'list', label: 'Bookings' },
+  { to: '/admin/calendar', icon: 'calendar', label: 'Calendar' },
+  { to: '/admin/vehicles', icon: 'car', label: 'Vehicles' },
+  { to: '/admin/reports', icon: 'chart', label: 'Reports' },
+  { to: '/admin/settings', icon: 'card', label: 'Cards' },
+];
+
+function Links() {
+  return LINKS.map(l => (
+    <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => 'nav' + (isActive ? ' active' : '')}>
+      <Icon name={l.icon} size={18}/><span>{l.label}</span>
+    </NavLink>
+  ));
+}
 
 export default function AdminLayout({ children }) {
   const { logout } = useAuth();
-  const nav = useNavigate();
   const handleLogout = () => { logout(); window.location.replace('/'); };
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="brand" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div className="logo-mini">→</div>
-            <span>admin</span>
-          </div>
-          <ThemeToggle/>
-        </div>
-        <div className="section-label">Management</div>
-        <NavLink to="/admin" end className={({isActive}) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="ico">▣</span><span>Dashboard</span>
-        </NavLink>
-        <NavLink to="/admin/bookings" className={({isActive}) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="ico">≡</span><span>Bookings</span>
-        </NavLink>
-        <NavLink to="/admin/calendar" className={({isActive}) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="ico">▦</span><span>Calendar</span>
-        </NavLink>
-        <NavLink to="/admin/reports" className={({isActive}) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="ico">↓</span><span>Reports</span>
-        </NavLink>
-        <NavLink to="/admin/vehicles" className={({isActive}) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="ico">⚙</span><span>Vehicles</span>
-        </NavLink>
-        <NavLink to="/admin/settings" className={({isActive}) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="ico">◉</span><span>Settings</span>
-        </NavLink>
-        <div className="section-label">Account</div>
-        <div className="nav-item" onClick={handleLogout}>
-          <span className="ico">→</span><span>Logout</span>
+    <div className="admin">
+      <aside className="side">
+        <Brand sub="Admin"/>
+        <Links/>
+        <div className="side-foot">
+          <a className="nav" href="/" target="_blank" rel="noreferrer"><Icon name="next" size={18}/><span>Open booking site</span></a>
+          <button className="nav" onClick={handleLogout}><Icon name="logout" size={18}/><span>Sign out</span></button>
+          <div style={{ padding: '8px 4px 0' }}><ThemeToggle/></div>
         </div>
       </aside>
-      <main className="main">{children}</main>
+
+      <div className="mobile-bar">
+        <div className="row">
+          <Brand sub=""/>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <ThemeToggle/>
+            <button className="icon-btn" onClick={handleLogout} aria-label="Sign out"><Icon name="logout" size={17}/></button>
+          </div>
+        </div>
+        <nav className="mobile-nav"><Links/></nav>
+      </div>
+
+      <main className="admin-main">
+        <Suspense fallback={<div className="empty">Loading…</div>}>{children}</Suspense>
+      </main>
     </div>
   );
 }
