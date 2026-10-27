@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using CarBooking.Api.Data;
 using CarBooking.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -70,10 +71,27 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database");
 
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.WithOrigins("http://localhost:5173", "https://reservation.c-zero.my")
+    p.WithOrigins("http://localhost:5173", "https://reservation.c-zero.com.my")
      .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
+// Behind nginx and Docker every request arrives from the bridge gateway, so
+// without this the per-IP login limit is one shared bucket for all users.
+// Only private-range proxies are trusted to set X-Forwarded-For.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    o.ForwardLimit = 1;
+    o.KnownNetworks.Clear();
+    o.KnownProxies.Clear();
+    o.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("127.0.0.0"), 8));
+    o.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
+    o.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
+    o.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
+});
+
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())
 {

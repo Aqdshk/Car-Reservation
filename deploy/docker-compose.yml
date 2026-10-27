@@ -1,0 +1,108 @@
+# Car Reservation production stack, parked on the PlagSini VPS.
+#
+# Always run with the project name, because the PlagSini CSMS lives on the
+# same box:   sudo docker compose -p carbooking ...
+#
+# Nothing here is published on a public interface, and nothing joins the
+# CSMS networks. Every container has a memory cap so this stack can never
+# starve the CSMS of RAM.
+#
+# The API image is built in GitHub Actions and loaded with `docker load`;
+# the server never compiles anything. The frontend is static files served by
+# the host nginx from /var/www/car-booking/current.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    logging: *logging
+    image: mariadb:11.4
+    container_name: carbooking-db
+    environment:
+      MARIADB_DATABASE: car_booking
+      MARIADB_USER: carbooking
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+    # Small buffer pool: the data is a few thousand bookings at most.
+    command:
+      - --innodb-buffer-pool-size=64M
+      - --max-connections=40
+      - --performance-schema=OFF
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - carbooking-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "1.0"
+
+  api:
+    logging: *logging
+    image: car-booking-api:${API_TAG:-latest}
+    container_name: carbooking-api
+    environment:
+      CARBOOKING_DB_CONN: server=db;port=3306;database=car_booking;user=carbooking;password=${DB_PASSWORD};TreatTinyAsBoolean=true
+      CARBOOKING_JWT_KEY: ${JWT_KEY:?set JWT_KEY in .env}
+      CARBOOKING_SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
+      # Cap the managed heap well under the container limit.
+      DOTNET_GCHeapHardLimit: "0x9000000"   # 144 MB
+    volumes:
+      - carbooking-uploads:/data/uploads
+    ports:
+      # Loopback only; the host nginx proxies /api/ here.
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "1.0"
+
+  # Nightly dump. The Pi lost every booking with its memory card; this keeps
+  # 14 days of dumps in a volume on the VPS.
+  backup:
+    logging: *logging
+    image: mariadb:11.4
+    container_name: carbooking-backup
+    environment:
+      DB_HOST: db
+      DB_NAME: car_booking
+      DB_USER: root
+      MYSQL_PWD: ${DB_ROOT_PASSWORD}
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: "14"
+      BACKUP_HOUR: "18"   # UTC; 02:00 in Malaysia
+    volumes:
+      - ./backup-loop.sh:/backup-loop.sh:ro
+      - carbooking-backups:/backups
+    entrypoint: ["/bin/sh", "/backup-loop.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+
+volumes:
+  carbooking-db-data:
+  carbooking-uploads:
+  carbooking-backups:

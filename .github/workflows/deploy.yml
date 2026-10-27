@@ -1,0 +1,201 @@
+# Car Reservation production deploy to the PlagSini VPS.
+#
+# Trigger: MANUAL only.  gh workflow run deploy.yml -R Aqdshk/Car-Reservation -f ref=main
+# (Use -f ref=..., not --ref: --ref picks which copy of this file runs, and
+# would deploy main anyway.)
+#
+# Everything is built here. The server only loads a finished image and
+# unpacks static files, because it also runs the PlagSini CSMS (OCPP, OCPI)
+# and must never spend a gigabyte of RAM compiling .NET.
+#
+# What it touches on the server: ~/carbooking, the carbooking-* containers
+# and /var/www/car-booking. Never .env, never the database volume, never any
+# CSMS container.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or commit SHA to deploy
+        required: false
+        default: main
+      force_deploy:
+        description: Skip the CI gate (emergency only)
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.ref }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      HAS_TELEGRAM: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Resolve commit
+        id: sha
+        run: |
+          echo "full=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "msg=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Require green CI on this commit
+        if: ${{ !inputs.force_deploy }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.sha.outputs.full }}
+        run: |
+          for JOB in "Backend (.NET 8)" "Frontend (Vite)"; do
+            RESULT=$(gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
+              --jq "[.check_runs[] | select(.name == \"${JOB}\") | .conclusion] | first // \"missing\"")
+            echo "${JOB} on ${SHA}: ${RESULT}"
+            if [ "${RESULT}" != "success" ]; then
+              echo "::error::CI job '${JOB}' is '${RESULT}' on this commit. Wait for it to pass, or use force_deploy."
+              exit 1
+            fi
+          done
+
+      - name: Build API image
+        run: |
+          docker build --build-arg GIT_SHA=${{ steps.sha.outputs.short }} \
+            -t car-booking-api:${{ steps.sha.outputs.short }} backend
+          docker save car-booking-api:${{ steps.sha.outputs.short }} | gzip > api-image.tar.gz
+          ls -lh api-image.tar.gz
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          tar -czf ../frontend-dist.tar.gz -C dist .
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.VPS_PORT }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -p "${VPS_PORT}" -o BatchMode=yes "${VPS_USER}@${VPS_HOST}" \
+            'rm -rf ~/carbooking/incoming && mkdir -p ~/carbooking/incoming'
+          scp -P "${VPS_PORT}" -o BatchMode=yes \
+            api-image.tar.gz frontend-dist.tar.gz deploy/docker-compose.yml deploy/backup-loop.sh \
+            "${VPS_USER}@${VPS_HOST}:carbooking/incoming/"
+
+      - name: Deploy on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          ssh -p "${VPS_PORT}" -o BatchMode=yes \
+              "${VPS_USER}@${VPS_HOST}" "TAG='${TAG}' bash -s" <<'REMOTE'
+          # Braces: bash reads the whole script before running any of it, so a
+          # command that swallows stdin cannot truncate the deploy silently.
+          {
+            set -euo pipefail
+            # -p carbooking on every call: the CSMS lives on the same box.
+            COMPOSE="sudo docker compose -p carbooking"
+            cd ~/carbooking
+            test -f .env || { echo "::error::~/carbooking/.env is missing, refusing to deploy"; exit 1; }
+
+            echo "=== Load image ${TAG} ==="
+            gunzip -c incoming/api-image.tar.gz | sudo docker load
+            sudo docker tag "car-booking-api:${TAG}" car-booking-api:latest
+            cp incoming/docker-compose.yml incoming/backup-loop.sh .
+
+            echo "=== Database and backup ==="
+            # Only (re)created if their definition changed; the data volume stays.
+            ${COMPOSE} up -d db backup
+
+            echo "=== Replace API (runs EF migrations on start) ==="
+            ${COMPOSE} up -d --no-deps --force-recreate api
+
+            BUILT=$(sudo docker image inspect "car-booking-api:${TAG}" --format '{{.Id}}')
+            RUNNING=$(sudo docker inspect carbooking-api --format '{{.Image}}')
+            if [ "${BUILT}" != "${RUNNING}" ]; then
+              echo "::error::carbooking-api runs ${RUNNING}, not ${BUILT}"
+              exit 1
+            fi
+
+            echo "=== API health ==="
+            OK=0
+            for i in $(seq 1 30); do
+              sleep 2
+              CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/health || echo 000)
+              echo "check ${i}: HTTP ${CODE}"
+              if [ "${CODE}" = "200" ]; then OK=1; break; fi
+            done
+            if [ "${OK}" != "1" ]; then
+              echo "::error::API health check failed; frontend left on the previous release"
+              sudo docker logs --tail 60 carbooking-api 2>&1
+              exit 1
+            fi
+
+            echo "=== Frontend release ${TAG} ==="
+            # A fresh directory per release, then an atomic symlink swap: no
+            # stale files from older builds, and rollback is one ln.
+            WEB=/var/www/car-booking
+            sudo mkdir -p "${WEB}/releases/${TAG}"
+            sudo tar -xzf incoming/frontend-dist.tar.gz -C "${WEB}/releases/${TAG}"
+            sudo ln -sfn "releases/${TAG}" "${WEB}/current.new"
+            sudo mv -Tf "${WEB}/current.new" "${WEB}/current"
+            # Keep the five newest releases.
+            ls -1dt "${WEB}"/releases/*/ | tail -n +6 | xargs -r sudo rm -rf
+            test -f "${WEB}/current/index.html"
+
+            echo "=== Tidy ==="
+            sudo docker images car-booking-api --format '{{.Tag}} {{.CreatedAt}}' \
+              | grep -vE '^(latest|'"${TAG}"') ' | sort -k2 -r | tail -n +3 | awk '{print $1}' \
+              | xargs -r -I{} sudo docker rmi "car-booking-api:{}" || true
+            rm -rf incoming
+
+            ${COMPOSE} ps
+            echo "Deployed ${TAG}"
+          }
+          REMOTE
+
+      - name: Notify Telegram
+        if: always() && env.HAS_TELEGRAM == 'true'
+        env:
+          BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATUS: ${{ job.status }}
+          SHA: ${{ steps.sha.outputs.short }}
+          MSG: ${{ steps.sha.outputs.msg }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${STATUS}" = "success" ]; then ICON="✅ Car Reservation deploy SUCCESS"; else ICON="❌ Car Reservation deploy FAILED"; fi
+          TEXT=$(printf '<b>%s</b>\n<code>%s</code> %s\n<a href="%s">Run</a>' "$ICON" "$SHA" "$MSG" "$RUN")
+          curl -sS --max-time 10 -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
+            -d chat_id="${CHAT}" -d parse_mode=HTML --data-urlencode "text=${TEXT}" > /dev/null || true

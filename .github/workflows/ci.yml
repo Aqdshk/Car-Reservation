@@ -1,5 +1,8 @@
 name: CI
 
+# Deploy refuses any commit on which "Backend (.NET 8)" and "Frontend (Vite)"
+# did not both pass. Renaming a job here means updating deploy.yml too.
+
 on:
   push:
     branches: [main]
@@ -27,21 +30,10 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Test
-        run: dotnet test --no-build --configuration Release --verbosity normal
-        continue-on-error: true  # remove once tests exist
-
-      - name: Publish (linux-arm)
-        if: github.ref == 'refs/heads/main'
-        run: dotnet publish -c Release -r linux-arm --self-contained false -o publish
-
-      - name: Upload backend artifact
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-publish
-          path: backend/publish
-          retention-days: 7
+      # The image deploy.yml ships; building it here catches Dockerfile breakage
+      # before anyone presses Deploy.
+      - name: Docker image builds
+        run: docker build -t car-booking-api:ci .
 
   frontend:
     name: Frontend (Vite)
@@ -64,11 +56,3 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Upload frontend artifact
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: frontend/dist
-          retention-days: 7
