@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace CarBooking.Api.Dtos;
 
 public record LoginDto(
-    [Required, EmailAddress, MaxLength(150)] string Email,
+    [Required, MaxLength(150)] string Email,   // username or email
     [Required, MaxLength(200)] string Password);
 
 public record AuthResponse(string Token, int UserId, string Name, string Email, string Role);

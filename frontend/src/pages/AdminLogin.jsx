@@ -35,8 +35,8 @@ export default function AdminLogin() {
           </div>
           {err && <div className="alert">{err}</div>}
           <div className="field">
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required autoFocus/>
+            <label htmlFor="email">Username</label>
+            <input id="email" type="text" value={email} onChange={(e) => setEmail(e.target.value.trim())} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck="false" required autoFocus/>
           </div>
           <div className="field">
             <label htmlFor="pw">Password</label>
