@@ -57,6 +57,8 @@ services:
       CARBOOKING_DB_CONN: server=db;port=3306;database=car_booking;user=carbooking;password=${DB_PASSWORD};TreatTinyAsBoolean=true
       CARBOOKING_JWT_KEY: ${JWT_KEY:?set JWT_KEY in .env}
       CARBOOKING_SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
+      # Key for the HQ command center API (/api/v1). Empty = API answers 503.
+      CARBOOKING_INTEGRATION_API_KEY: ${INTEGRATION_API_KEY:-}
       # Cap the managed heap well under the container limit.
       DOTNET_GCHeapHardLimit: "0x9000000"   # 144 MB
     volumes:

@@ -65,7 +65,20 @@ builder.Services.AddRateLimiter(opt =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             }));
+    // HQ command center: 120 calls a minute, per client IP. Polling every few
+    // seconds fits easily; a runaway loop does not take the app down.
+    opt.AddPolicy("integration", ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
 });
+
+builder.Services.AddScoped<CarBooking.Api.Controllers.IntegrationKeyFilter>();
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database");
